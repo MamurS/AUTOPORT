@@ -1,0 +1,60 @@
+# File: render.yaml
+
+services:
+  # PostgreSQL Database Service
+  - type: pserv # 'pserv' is Render's internal type for PostgreSQL
+    name: autoport-db
+    region: frankfurt # Example region: Frankfurt, Germany. Choose one close to your users or for testing.
+                      # Other options: oregon (US West), ohio (US East), singapore (Asia SE)
+    plan: free      # Uses Render's free tier for PostgreSQL (check current availability and limits)
+    postgresVersion: 15 # Specifies PostgreSQL version 15
+    ipAllowList: [] # Empty list restricts access to services within your Render account (good default)
+                    # Add specific IPs if you need direct external access (e.g., for DBeaver from your IP)
+
+  # FastAPI Web Service (Your API Backend)
+  - type: web
+    name: autoport-api
+    runtime: docker # Specifies that Render should build and run from a Dockerfile
+    region: frankfurt # Recommended to keep same region as your database for low latency
+    plan: free      # Uses Render's free tier for web services (check current limits)
+    dockerfilePath: ./Dockerfile # Path to your Dockerfile from the root of your repo
+    healthCheckPath: /health # Path for Render to perform health checks (uses your /health endpoint)
+    envVars:
+      - key: PYTHONUNBUFFERED # Ensures Python output (like prints and logs) appears immediately
+        value: "1"
+      - key: DATABASE_URL # This will be automatically populated by Render
+        fromDatabase:
+          name: autoport-db # Must match the 'name' of your PostgreSQL service above
+          property: connectionString # Tells Render to inject the full internal connection string
+      - key: JWT_SECRET_KEY
+        sync: false  # CRITICAL: Tells Render this is a secret to be set in the dashboard, NOT synced from this YAML
+      - key: JWT_ALGORITHM
+        value: "HS256"
+      - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES # Corrected to match config.py
+        value: "30"
+      - key: APP_NAME # Example, will be read by your config.py
+        value: "AutoPort API (Render)"
+      - key: APP_VERSION # Example
+        value: "0.1.0-render"
+      - key: ENVIRONMENT # To let your app know it's running in a specific environment
+        value: "production" # Or "staging", "development" as per your needs
+      # Add any other environment variables your config.py or application needs
+      # - key: API_V1_STR 
+      #   value: "/api/v1" # Already defaulted in config.py, but can be set here too
+      # - key: LOG_LEVEL
+      #   value: "INFO" # Already defaulted in config.py
+
+    # Commands to run during the build phase (after Docker image is built, before start command)
+    buildCommand: |
+      pip install -r requirements.txt # Ensure your Dockerfile doesn't already do this, or remove from one place
+      alembic upgrade head
+
+    # Command to start your application
+    # Render injects a PORT environment variable your app must listen on.
+    # Uvicorn will automatically use $PORT if available when --port is not specified,
+    # or you can explicitly use it.
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1 # Using $PORT, added --workers 1 for production
+    
+    autoDeploy: true # Set to false if you don't want auto-deploys on git push to main/specified branch
+    # Optional: Specify branch for auto-deploy
+    # branch: main 
