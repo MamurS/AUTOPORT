@@ -1,60 +1,35 @@
-# File: render.yaml (Revised based on new Render errors)
-
 services:
-  # PostgreSQL Database Service
-  - type: pserv
-    name: autoport-db
-    region: frankfurt 
-    plan: free
-    # For type: pserv, 'runtime' and 'startCommand' are not applicable as Render manages it.
-    # 'postgresVersion' can be specified if the property name is correct for 'pserv'
-    # Render documentation for 'pserv' type indicates 'engineVersion' is not standard for it.
-    # Version is often set in the UI or defaults for the plan.
-    # Example property for engine version if found in docs for 'pserv':
-    # engine: postgres # This is usually not needed, version is picked by plan/UI
-    # postgresMajorVersion: 15 # Some platforms use this style
-
-    # Let's keep it minimal and rely on Render's defaults / UI for version for 'pserv'
-    # ipAllowRules are also typically managed via UI for pserv
-
-  # FastAPI Web Service (Your API Backend)
+  # Web service - your FastAPI application
   - type: web
     name: autoport-api
-    runtime: docker # Specifies that Render should build and run from a Dockerfile
-    region: frankfurt 
-    plan: free
+    runtime: docker
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /health
+    dockerContext: .
     envVars:
-      - key: PYTHONUNBUFFERED
-        value: "1"
+      # Database connection - will be auto-populated by Render
       - key: DATABASE_URL
         fromDatabase:
-          name: autoport-db 
+          name: autoport-db
           property: connectionString
+      
+      # JWT configuration - CHANGE THESE IN PRODUCTION!
       - key: JWT_SECRET_KEY
-        sync: false 
+        generateValue: true  # Render will generate a secure random value
       - key: JWT_ALGORITHM
-        value: "HS256"
+        value: HS256
       - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
-        value: "30"
+        value: 1440
+      
+      # Application settings
       - key: APP_NAME
-        value: "AutoPort API (Render)"
+        value: AutoPort API
       - key: APP_VERSION
-        value: "0.1.0-render"
+        value: 0.1.0
       - key: ENVIRONMENT
-        value: "production"
+        value: production
 
-    # buildCommand is still valid for running things after docker build but before start
-    buildCommand: |
-      # If your Dockerfile fully installs dependencies, you might not need this pip install here.
-      # It depends on whether your Docker image is self-contained after build.
-      # Assuming requirements might change and Dockerfile uses cached layers:
-      pip install -r requirements.txt 
-      alembic upgrade head
-    
-    # For runtime: docker, the start command should be in your Dockerfile's CMD or ENTRYPOINT.
-    # Remove startCommand from here.
-    # startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1 
-    
-    autoDeploy: true
+databases:
+  # PostgreSQL database
+  - name: autoport-db
+    plan: free  # or 'starter' for production
+    postgresMajorVersion: 15

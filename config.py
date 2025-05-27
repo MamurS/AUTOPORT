@@ -5,6 +5,20 @@ from pydantic_settings import BaseSettings
 from pydantic import AnyHttpUrl, validator
 
 
+def get_database_url():
+    """
+    Get database URL, converting from Render's format if necessary.
+    Render provides postgresql:// but SQLAlchemy async needs postgresql+asyncpg://
+    """
+    db_url = os.getenv("DATABASE_URL")
+    
+    if db_url and db_url.startswith("postgresql://"):
+        # Convert to async format
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    
+    return db_url or "postgresql+asyncpg://postgres:postgres@localhost:5432/autoport"
+
+
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "AutoPort API"
@@ -13,8 +27,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "AutoPort"
     
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/autoport"
+    # Database - now using the helper function
+    DATABASE_URL: str = get_database_url()
     
     # JWT
     JWT_SECRET_KEY: str = "your-secret-key-here-change-in-production"
