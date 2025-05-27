@@ -1,17 +1,27 @@
-# File: render.yaml (Revised PostgreSQL section)
+# File: render.yaml (Revised based on new Render errors)
 
 services:
   # PostgreSQL Database Service
-  - type: pserv # This tells Render it's a PostgreSQL service
+  - type: pserv
     name: autoport-db
-    region: frankfurt # Choose your preferred region
-    plan: free      # Use the free plan for PostgreSQL
+    region: frankfurt 
+    plan: free
+    # For type: pserv, 'runtime' and 'startCommand' are not applicable as Render manages it.
+    # 'postgresVersion' can be specified if the property name is correct for 'pserv'
+    # Render documentation for 'pserv' type indicates 'engineVersion' is not standard for it.
+    # Version is often set in the UI or defaults for the plan.
+    # Example property for engine version if found in docs for 'pserv':
+    # engine: postgres # This is usually not needed, version is picked by plan/UI
+    # postgresMajorVersion: 15 # Some platforms use this style
+
+    # Let's keep it minimal and rely on Render's defaults / UI for version for 'pserv'
+    # ipAllowRules are also typically managed via UI for pserv
 
   # FastAPI Web Service (Your API Backend)
   - type: web
     name: autoport-api
-    runtime: docker
-    region: frankfurt # Match the database region for low latency
+    runtime: docker # Specifies that Render should build and run from a Dockerfile
+    region: frankfurt 
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
@@ -20,10 +30,10 @@ services:
         value: "1"
       - key: DATABASE_URL
         fromDatabase:
-          name: autoport-db # Refers to the PostgreSQL service defined above
-          property: connectionString # Render injects the correct internal connection string
+          name: autoport-db 
+          property: connectionString
       - key: JWT_SECRET_KEY
-        sync: false # CRITICAL: Set this as a secret in the Render dashboard
+        sync: false 
       - key: JWT_ALGORITHM
         value: "HS256"
       - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
@@ -33,19 +43,18 @@ services:
       - key: APP_VERSION
         value: "0.1.0-render"
       - key: ENVIRONMENT
-        value: "production" # Or "staging"
-      # Example for CORS origins - set this in Render Dashboard for your actual frontend URL
-      # - key: BACKEND_CORS_ORIGINS 
-      #   value: "https://your-frontend-domain.com" # Or "http://localhost:xxxx" for local frontend dev against deployed backend
+        value: "production"
 
-    # Commands to run during the build phase
+    # buildCommand is still valid for running things after docker build but before start
     buildCommand: |
-      pip install -r requirements.txt # If not already fully handled in Dockerfile
+      # If your Dockerfile fully installs dependencies, you might not need this pip install here.
+      # It depends on whether your Docker image is self-contained after build.
+      # Assuming requirements might change and Dockerfile uses cached layers:
+      pip install -r requirements.txt 
       alembic upgrade head
     
-    # Command to start your application
-    # Render injects a PORT environment variable that your web service must listen on.
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+    # For runtime: docker, the start command should be in your Dockerfile's CMD or ENTRYPOINT.
+    # Remove startCommand from here.
+    # startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1 
     
     autoDeploy: true
-    # branch: main # Uncomment and set if you want to deploy from a specific branch
