@@ -1,35 +1,54 @@
+# File: render.yaml
+
 services:
-  # Web service - your FastAPI application
+  # PostgreSQL Database Service
+  - type: pserv 
+    name: autoport-db
+    region: frankfurt # Or your preferred Render region (e.g., oregon, ohio, singapore)
+    plan: free      # Uses Render's free tier for PostgreSQL
+
+  # FastAPI Web Service (Your API Backend)
   - type: web
     name: autoport-api
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    runtime: docker 
+    region: frankfurt # Match the database region for low latency
+    plan: free
+    dockerfilePath: ./Dockerfile # Path to your Dockerfile from the root of your repo
+    healthCheckPath: /health # Your application's health check endpoint (/api/v1/health if prefix is applied to it)
+                            # Note: If your /health is also prefixed by /api/v1 in main.py, update this.
+                            # If /health is a root path, this is fine.
     envVars:
-      # Database connection - will be auto-populated by Render
-      - key: DATABASE_URL
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DATABASE_URL 
         fromDatabase:
-          name: autoport-db
-          property: connectionString
-      
-      # JWT configuration - CHANGE THESE IN PRODUCTION!
+          name: autoport-db 
+          property: connectionString 
       - key: JWT_SECRET_KEY
-        generateValue: true  # Render will generate a secure random value
-      - key: JWT_ALGORITHM
-        value: HS256
+        sync: false # CRITICAL: Set this as a secret in the Render dashboard for this service
+      # These will be picked up by config.py from the environment Render sets based on these values
+      - key: JWT_ALGORITHM 
+        value: "HS256"
       - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
-        value: 1440
-      
-      # Application settings
+        value: "30"
       - key: APP_NAME
-        value: AutoPort API
+        value: "AutoPort API (Render)"
       - key: APP_VERSION
-        value: 0.1.0
-      - key: ENVIRONMENT
-        value: production
+        value: "0.1.0-render"
+      - key: ENVIRONMENT # To let your app know it's running in this environment
+        value: "production" # Set to "production", "staging", or "development"
+      # Example: Set CORS origins string for Render environment
+      # - key: BACKEND_CORS_ORIGINS_STR
+      #   value: "https://your-frontend1.onrender.com,https://your-frontend2.com"
 
-databases:
-  # PostgreSQL database
-  - name: autoport-db
-    plan: free  # or 'starter' for production
-    postgresMajorVersion: 15
+    # Commands to run during the build phase (after Docker image is built, before start command)
+    buildCommand: |
+      echo "Build command started..."
+      # Ensure Alembic is installed (should be in requirements.txt)
+      alembic upgrade head
+      echo "Build command finished."
+    
+    # NO startCommand here for runtime: docker. It's taken from Dockerfile's CMD.
+    
+    autoDeploy: true # Automatically deploys on pushes to the default branch (e.g., main)
+    # branch: main # Uncomment and specify if you want to deploy from a specific branch
