@@ -11,6 +11,10 @@ from sqlalchemy.exc import SQLAlchemyError # Good to catch specific DB errors
 
 from models import User, SMSVerification, UserStatus, UserRole
 from schemas import UserCreatePhoneNumber # Not used directly, but was in approved version
+from fastapi import HTTPException, status
+import logging
+
+logger = logging.getLogger(__name__)
 
 # --- Read operations (get_user_by_phone, get_user_by_id, verify_otp) remain unchanged ---
 async def get_user_by_phone(session: AsyncSession, phone_number: str) -> Optional[User]:
@@ -113,6 +117,59 @@ async def update_user_profile(
     await session.flush() # Ensure changes are pending before refresh
     await session.refresh(user) # Get updated_at etc.
     return user
+
+async def request_driver_role(session: AsyncSession, user_to_update: User) -> User:
+    """
+    Updates a user's role to DRIVER and sets their status to PENDING_PROFILE_COMPLETION.
+    This function is used when a user applies to become a driver.
+    
+    Args:
+        session: The database session
+        user_to_update: The user object to update
+        
+    Returns:
+        The updated user object
+        
+    Raises:
+        HTTPException: If the user is an admin or if there's an error updating the user
+    """
+    try:
+        # Check if user is an admin
+        if user_to_update.role == UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admins cannot apply for driver role."
+            )
+            
+        # If user is already a driver and either pending or active, reset to pending
+        if user_to_update.role == UserRole.DRIVER and user_to_update.status in [
+            UserStatus.PENDING_PROFILE_COMPLETION,
+            UserStatus.ACTIVE
+        ]:
+            user_to_update.status = UserStatus.PENDING_PROFILE_COMPLETION
+        else:
+            # Set role to DRIVER and status to PENDING_PROFILE_COMPLETION
+            user_to_update.role = UserRole.DRIVER
+            user_to_update.status = UserStatus.PENDING_PROFILE_COMPLETION
+            
+        # Clear any previous admin verification notes for re-application
+        user_to_update.admin_verification_notes = None
+        
+        # Add to session and flush
+        session.add(user_to_update)
+        await session.flush()
+        await session.refresh(user_to_update)
+        
+        return user_to_update
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in request_driver_role: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while processing your driver application."
+        )
 
 # --- Utility functions (generate_otp, get_otp_expiry) remain unchanged ---
 def generate_otp() -> str:
