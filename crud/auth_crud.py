@@ -171,6 +171,44 @@ async def request_driver_role(session: AsyncSession, user_to_update: User) -> Us
             detail="An unexpected error occurred while processing your driver application."
         )
 
+async def complete_driver_registration(session: AsyncSession, user: User, full_name: str) -> User:
+    """
+    Complete the driver registration process by updating the user's profile and role.
+    This function is used after OTP verification to set up a new driver account.
+    
+    Args:
+        session: The database session
+        user: The user object to update
+        full_name: The full name provided by the driver
+        
+    Returns:
+        The updated user object
+        
+    Raises:
+        HTTPException: If there's an error updating the user
+    """
+    try:
+        # Set the user's full name
+        user.full_name = full_name
+        
+        # Set role to DRIVER and status to PENDING_PROFILE_COMPLETION
+        user.role = UserRole.DRIVER
+        user.status = UserStatus.PENDING_PROFILE_COMPLETION
+        
+        # Add to session and flush
+        session.add(user)
+        await session.flush()
+        await session.refresh(user)
+        
+        return user
+        
+    except Exception as e:
+        logger.error(f"Error in complete_driver_registration: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while completing driver registration."
+        )
+
 # --- Utility functions (generate_otp, get_otp_expiry) remain unchanged ---
 def generate_otp() -> str:
     # ... (as before)

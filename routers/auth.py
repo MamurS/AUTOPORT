@@ -17,6 +17,7 @@ from crud.auth_crud import (
     mark_otp_as_used,
     update_user_profile,
     verify_otp,
+    complete_driver_registration,
 )
 from database import get_db
 from models import User, UserRole, UserStatus # Added User, UserRole for re-fetch if needed by UserResponse
@@ -173,6 +174,54 @@ async def verify_login_otp(
         raise
     except Exception as e:
         logger.error(f"Error in verify_login_otp: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred."
+        )
+
+@router.post("/register/driver", response_model=TokenResponse)
+async def complete_driver_registration_endpoint(
+    request_data: UserVerifyOTPAndSetProfileRequest,
+    db: Annotated[AsyncSession, Depends(get_db)]
+) -> TokenResponse:
+    """
+    Complete the driver registration process after OTP verification.
+    This endpoint is used to set up a new driver account with their full name.
+    """
+    try:
+        # Verify OTP first
+        is_valid, verification = await verify_otp(db, request_data.phone_number, request_data.code)
+        if not is_valid or not verification:
+            raise HTTPException(status_code=400, detail="Invalid or expired OTP.")
+        
+        # Get the user
+        user = await get_user_by_phone(db, request_data.phone_number)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found.")
+            
+        # Check if user is already a driver
+        if user.role == UserRole.DRIVER:
+            if user.status == UserStatus.ACTIVE:
+                raise HTTPException(status_code=400, detail="Driver account is already active.")
+            if user.status == UserStatus.PENDING_PROFILE_COMPLETION:
+                raise HTTPException(status_code=400, detail="Driver registration is already pending admin review.")
+        
+        # Mark OTP as used
+        await mark_otp_as_used(db, verification)
+        
+        # Complete driver registration
+        updated_driver = await complete_driver_registration(db, user, request_data.full_name)
+        
+        # Generate access token
+        access_token = create_access_token(user_id=updated_driver.id, role=updated_driver.role.value)
+        
+        logger.info(f"Driver registration completed for {updated_driver.phone_number}")
+        return TokenResponse(access_token=access_token, token_type="bearer", user=updated_driver)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in complete_driver_registration_endpoint: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred."
