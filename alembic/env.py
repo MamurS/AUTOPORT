@@ -8,19 +8,42 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
-# Add the project root to Python path so we can import our models
+# Add the project root to Python path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# Import your database configuration and models
+# Try to import models with better error handling
+target_metadata = None
+
 try:
-    from app.database import Base
-    # Import all your models so Alembic can detect them
-    from app.models import user, car, trip, booking
-    # Add any other model imports you have
-    target_metadata = Base.metadata
-except ImportError as e:
+    # Try different import patterns based on your project structure
+    try:
+        from app.database import Base
+        from app.models import user, car, trip, booking
+    except ImportError:
+        try:
+            from database import Base
+            from models import user, car, trip, booking
+        except ImportError:
+            try:
+                # Direct import from current directory
+                import database
+                import models.user
+                import models.car
+                import models.trip
+                import models.booking
+                Base = database.Base
+            except ImportError:
+                print("Warning: Could not import models. Alembic will work but won't auto-detect schema changes.")
+                print("You can create migrations manually or fix the import paths.")
+                Base = None
+    
+    if Base is not None:
+        target_metadata = Base.metadata
+        print("✅ Successfully imported database models")
+    
+except Exception as e:
     print(f"Warning: Could not import models: {e}")
-    print("Alembic will work but won't detect model changes")
+    print("Alembic will work but won't detect model changes automatically")
     target_metadata = None
 
 # this is the Alembic Config object, which provides
