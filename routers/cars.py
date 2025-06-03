@@ -1,371 +1,143 @@
+# File: routers/cars.py (Refactored for dependency-level transactions)
+
 import logging
 from typing import Annotated, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query # Added Query if used
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select # For re-fetch
+from sqlalchemy.orm import selectinload # For re-fetch
 
 from auth.dependencies import get_current_active_user
 from crud import car_crud
 from database import get_db
-from models import User, UserRole
+from models import User, UserRole, Car # Car needed for re-fetch
 from schemas import CarCreate, CarResponse, CarUpdate
 
-# Configure logging
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/cars", tags=["cars"])
 
-@router.post(
-    "/",
-    response_model=CarResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Add a new car",
-    description="Add a new car to the authenticated driver's profile."
-)
+@router.post("/", response_model=CarResponse, status_code=status.HTTP_201_CREATED)
 async def add_car(
     car_in: CarCreate,
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ) -> CarResponse:
-    """
-    Add a new car to the authenticated driver's profile.
-    
-    Args:
-        car_in: The car data from the request
-        current_user: The authenticated user (injected by FastAPI)
-        db: The database session (injected by FastAPI)
-        
-    Returns:
-        The created car
-        
-    Raises:
-        HTTPException: If the user is not a driver or if a car with the same license plate exists
-    """
-    # Check if user is a driver
     if current_user.role != UserRole.DRIVER:
-        logger.warning(f"Non-driver user {current_user.id} attempted to add a car")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only drivers can add cars."
-        )
-    
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only drivers can add cars.")
     try:
-        async with db.begin_nested():
-            # Create the car
-            car = await car_crud.create_driver_car(
-                session=db,
-                car_in=car_in,
-                driver_id=current_user.id
-            )
-            
-            return car
+        # CRUD create_driver_car does not commit
+        created_car_shell = await car_crud.create_driver_car(session=db, car_in=car_in, driver_id=current_user.id)
+        
+        # get_db will commit. Re-fetch for response if CarResponse nests driver.
+        # Our CarResponse doesn't directly nest the User object for driver, just driver_id.
+        # The created_car_shell (after refresh in CRUD) should be sufficient.
+        logger.info(f"Car {created_car_shell.license_plate} created by driver {current_user.id}")
+        return created_car_shell
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in add_car: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred."
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
 
-@router.get(
-    "/",
-    response_model=List[CarResponse],
-    summary="Get driver's cars",
-    description="Get a list of all cars registered by the authenticated driver."
-)
+# --- GET endpoints remain largely the same, as they are read operations ---
+@router.get("/", response_model=List[CarResponse])
 async def get_my_cars(
     current_user: Annotated[User, Depends(get_current_active_user)],
-    db: Annotated[AsyncSession, Depends(get_db)]
+    db: Annotated[AsyncSession, Depends(get_db)],
+    # Using Claude's pattern for Query params that worked
+    skip: Annotated[int, Query(ge=0, description="Number of records to skip")] = 0,
+    limit: Annotated[int, Query(ge=1, le=100, description="Maximum number of records to return")] = 20
 ) -> List[CarResponse]:
-    """
-    Get a list of all cars registered by the authenticated driver.
-    
-    Args:
-        current_user: The authenticated user (injected by FastAPI)
-        db: The database session (injected by FastAPI)
-        
-    Returns:
-        A list of cars owned by the driver
-        
-    Raises:
-        HTTPException: If the user is not a driver
-    """
-    # Check if user is a driver
     if current_user.role != UserRole.DRIVER:
-        logger.warning(f"Non-driver user {current_user.id} attempted to view cars")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only drivers can view their cars."
-        )
-    
-    try:
-        # Get the cars
-        cars = await car_crud.get_driver_cars(
-            session=db,
-            driver_id=current_user.id
-        )
-        
-        return cars
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in get_my_cars: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred."
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only drivers can view their cars.")
+    cars = await car_crud.get_driver_cars(session=db, driver_id=current_user.id, skip=skip, limit=limit)
+    return cars
 
-@router.get(
-    "/{car_id}",
-    response_model=CarResponse,
-    summary="Get specific car",
-    description="Get details of a specific car owned by the authenticated driver."
-)
+@router.get("/{car_id}", response_model=CarResponse)
 async def get_my_car(
     car_id: UUID,
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ) -> CarResponse:
-    """
-    Get details of a specific car owned by the authenticated driver.
-    
-    Args:
-        car_id: The UUID of the car to fetch
-        current_user: The authenticated user (injected by FastAPI)
-        db: The database session (injected by FastAPI)
-        
-    Returns:
-        The car details
-        
-    Raises:
-        HTTPException: If the user is not a driver or if the car is not found/not owned by the driver
-    """
-    # Check if user is a driver
     if current_user.role != UserRole.DRIVER:
-        logger.warning(f"Non-driver user {current_user.id} attempted to view car {car_id}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only drivers can view car details."
-        )
-    
-    try:
-        # Get the car
-        car = await car_crud.get_driver_car_by_id(
-            session=db,
-            car_id=car_id,
-            driver_id=current_user.id
-        )
-        
-        if not car:
-            logger.warning(f"Car {car_id} not found or not owned by driver {current_user.id}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Car not found or not owned by this driver."
-            )
-        
-        return car
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in get_my_car: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred."
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only drivers can view car details.")
+    car = await car_crud.get_driver_car_by_id(session=db, car_id=car_id, driver_id=current_user.id)
+    if not car:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Car not found or not owned by this driver.")
+    return car
 
-@router.patch(
-    "/{car_id}",
-    response_model=CarResponse,
-    summary="Update car",
-    description="Update details of a specific car owned by the authenticated driver."
-)
+@router.patch("/{car_id}", response_model=CarResponse)
 async def update_my_car(
     car_id: UUID,
     car_in: CarUpdate,
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ) -> CarResponse:
-    """
-    Update details of a specific car owned by the authenticated driver.
-    
-    Args:
-        car_id: The UUID of the car to update
-        car_in: The update data from the request
-        current_user: The authenticated user (injected by FastAPI)
-        db: The database session (injected by FastAPI)
-        
-    Returns:
-        The updated car details
-        
-    Raises:
-        HTTPException: If the user is not a driver, if the car is not found/not owned by the driver,
-                      or if another car with the new license plate exists
-    """
-    # Check if user is a driver
     if current_user.role != UserRole.DRIVER:
-        logger.warning(f"Non-driver user {current_user.id} attempted to update car {car_id}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only drivers can update car details."
-        )
-    
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only drivers can update car details.")
     try:
-        async with db.begin_nested():
-            # Get the car to update
-            car = await car_crud.get_driver_car_by_id(
-                session=db,
-                car_id=car_id,
-                driver_id=current_user.id
-            )
-            
-            if not car:
-                logger.warning(f"Car {car_id} not found or not owned by driver {current_user.id}")
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Car not found or not owned by this driver."
-                )
-            
-            # Update the car
-            updated_car = await car_crud.update_driver_car(
-                session=db,
-                car_to_update=car,
-                car_in=car_in
-            )
-            
-            return updated_car
+        # No db.begin_nested()
+        car = await car_crud.get_driver_car_by_id(session=db, car_id=car_id, driver_id=current_user.id)
+        if not car:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Car not found or not owned by this driver.")
+        
+        updated_car_shell = await car_crud.update_driver_car(session=db, car_to_update=car, car_in=car_in)
+        
+        # get_db will commit. Re-fetch if needed for CarResponse's nested items.
+        # CarResponse doesn't nest driver object, so refreshed updated_car_shell is fine.
+        logger.info(f"Car {updated_car_shell.id} updated by driver {current_user.id}")
+        return updated_car_shell
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in update_my_car: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred."
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
 
-@router.delete(
-    "/{car_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete car",
-    description="Delete a specific car owned by the authenticated driver."
-)
+@router.delete("/{car_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_my_car(
     car_id: UUID,
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ) -> None:
-    """
-    Delete a specific car owned by the authenticated driver.
-    
-    Args:
-        car_id: The UUID of the car to delete
-        current_user: The authenticated user (injected by FastAPI)
-        db: The database session (injected by FastAPI)
-        
-    Raises:
-        HTTPException: If the user is not a driver or if the car is not found/not owned by the driver
-    """
-    # Check if user is a driver
     if current_user.role != UserRole.DRIVER:
-        logger.warning(f"Non-driver user {current_user.id} attempted to delete car {car_id}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only drivers can delete cars."
-        )
-    
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only drivers can delete cars.")
     try:
-        async with db.begin_nested():
-            # Get the car to delete
-            car = await car_crud.get_driver_car_by_id(
-                session=db,
-                car_id=car_id,
-                driver_id=current_user.id
-            )
-            
-            if not car:
-                logger.warning(f"Car {car_id} not found or not owned by driver {current_user.id}")
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Car not found or not owned by this driver."
-                )
-            
-            # Delete the car
-            await car_crud.delete_driver_car(
-                session=db,
-                car_to_delete=car
-            )
+        # No db.begin_nested()
+        car = await car_crud.get_driver_car_by_id(session=db, car_id=car_id, driver_id=current_user.id)
+        if not car:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Car not found or not owned by this driver.")
+        await car_crud.delete_driver_car(session=db, car_to_delete=car)
+        # get_db will commit.
+        logger.info(f"Car {car_id} deleted by driver {current_user.id}")
+        return None # For 204 response
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in delete_my_car: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred."
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
 
-@router.post(
-    "/{car_id}/set-default",
-    response_model=CarResponse,
-    summary="Set default car",
-    description="Set a specific car as the default car for the authenticated driver."
-)
+@router.post("/{car_id}/set-default", response_model=CarResponse)
 async def set_my_default_car(
     car_id: UUID,
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ) -> CarResponse:
-    """
-    Set a specific car as the default car for the authenticated driver.
-    
-    Args:
-        car_id: The UUID of the car to set as default
-        current_user: The authenticated user (injected by FastAPI)
-        db: The database session (injected by FastAPI)
-        
-    Returns:
-        The updated car details
-        
-    Raises:
-        HTTPException: If the user is not a driver or if the car is not found/not owned by the driver
-    """
-    # Check if user is a driver
     if current_user.role != UserRole.DRIVER:
-        logger.warning(f"Non-driver user {current_user.id} attempted to set default car {car_id}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only drivers can set default cars."
-        )
-    
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only drivers can set default cars.")
     try:
-        async with db.begin_nested():
-            # Get the car to set as default
-            car = await car_crud.get_driver_car_by_id(
-                session=db,
-                car_id=car_id,
-                driver_id=current_user.id
-            )
-            
-            if not car:
-                logger.warning(f"Car {car_id} not found or not owned by driver {current_user.id}")
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Car not found or not owned by this driver."
-                )
-            
-            # Set as default
-            updated_car = await car_crud.set_driver_default_car(
-                session=db,
-                car_to_set_default=car,
-                driver_id=current_user.id
-            )
-            
-            return updated_car
+        # No db.begin_nested()
+        car = await car_crud.get_driver_car_by_id(session=db, car_id=car_id, driver_id=current_user.id)
+        if not car:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Car not found or not owned by this driver.")
+        
+        updated_car_shell = await car_crud.set_driver_default_car(session=db, car_to_set_default=car, driver_id=current_user.id)
+        # get_db will commit. Refreshed car from CRUD is fine for CarResponse.
+        logger.info(f"Car {updated_car_shell.id} set as default by driver {current_user.id}")
+        return updated_car_shell
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in set_my_default_car: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred."
-        ) 
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
