@@ -1,4 +1,4 @@
-# File: schemas.py (Fixed with proper imports and dependencies)
+# File: schemas.py (Simplified version without external dependencies)
 
 import re
 from datetime import datetime
@@ -6,8 +6,7 @@ from typing import Optional, List, Dict, Any, Union
 from uuid import UUID
 from decimal import Decimal
 from enum import Enum
-
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from dataclasses import dataclass, field
 
 # Define enums locally to avoid circular imports
 class UserRole(str, Enum):
@@ -73,55 +72,55 @@ class EmergencyType(str, Enum):
 # Phone number validation regex for Uzbekistan format
 PHONE_REGEX = r"^\+998[0-9]{9}$"
 
-# --- ENHANCED EXISTING SCHEMAS ---
+def validate_phone_number(phone: str) -> str:
+    """Validate phone number format"""
+    if not re.match(PHONE_REGEX, phone):
+        raise ValueError("Phone number must be in Uzbekistan format: +998XXXXXXXXX")
+    return phone
 
-class UserBase(BaseModel):
+def validate_languages(languages: List[str]) -> List[str]:
+    """Validate language codes"""
+    if languages:
+        valid_langs = {"uz", "ru", "en", "tr", "ar"}
+        if not all(lang in valid_langs for lang in languages):
+            raise ValueError("Invalid language code")
+    return languages or ["uz"]
+
+# --- BASE SCHEMAS USING DATACLASSES ---
+
+@dataclass
+class UserBase:
     phone_number: str
     full_name: Optional[str] = None
     role: UserRole = UserRole.PASSENGER
-    
-    # NEW: Enhanced profile fields
     profile_image_url: Optional[str] = None
     date_of_birth: Optional[datetime] = None
-    gender: Optional[str] = Field(None, regex="^(male|female|other)$")
-    spoken_languages: Optional[List[str]] = Field(default_factory=lambda: ["uz"])
-    bio: Optional[str] = Field(None, max_length=500)
+    gender: Optional[str] = None  # male, female, other
+    spoken_languages: Optional[List[str]] = field(default_factory=lambda: ["uz"])
+    bio: Optional[str] = None
     email: Optional[str] = None
-    preferred_language: str = Field(default="uz", regex="^(uz|ru|en)$")
-    currency_preference: str = Field(default="UZS", regex="^(UZS|USD|EUR)$")
+    preferred_language: str = "uz"
+    currency_preference: str = "UZS"
 
-    @field_validator("phone_number")
-    @classmethod
-    def validate_phone_number(cls, v: str) -> str:
-        if not re.match(PHONE_REGEX, v):
-            raise ValueError("Phone number must be in Uzbekistan format: +998XXXXXXXXX")
-        return v
+    def __post_init__(self):
+        self.phone_number = validate_phone_number(self.phone_number)
+        self.spoken_languages = validate_languages(self.spoken_languages)
 
-    @field_validator("spoken_languages")
-    @classmethod
-    def validate_languages(cls, v: List[str]) -> List[str]:
-        if v:
-            valid_langs = {"uz", "ru", "en", "tr", "ar"}
-            if not all(lang in valid_langs for lang in v):
-                raise ValueError("Invalid language code")
-        return v or ["uz"]
+@dataclass
+class UserCreatePhoneNumber:
+    phone_number: str
 
-class UserCreatePhoneNumber(BaseModel):
-    phone_number: str = Field(..., description="Phone number in Uzbekistan format: +998XXXXXXXXX")
+    def __post_init__(self):
+        self.phone_number = validate_phone_number(self.phone_number)
 
-    @field_validator("phone_number")
-    @classmethod
-    def validate_phone_number(cls, v: str) -> str:
-        if not re.match(PHONE_REGEX, v):
-            raise ValueError("Phone number must be in Uzbekistan format: +998XXXXXXXXX")
-        return v
-
-class UserCreateProfile(BaseModel):
-    full_name: str = Field(..., min_length=2, max_length=100)
-    gender: Optional[str] = Field(None, regex="^(male|female|other)$")
+@dataclass
+class UserCreateProfile:
+    full_name: str
+    gender: Optional[str] = None
     date_of_birth: Optional[datetime] = None
-    preferred_language: str = Field(default="uz", regex="^(uz|ru|en)$")
+    preferred_language: str = "uz"
 
+@dataclass
 class UserResponse(UserBase):
     id: UUID
     status: UserStatus
@@ -131,170 +130,155 @@ class UserResponse(UserBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
-
-class UserProfileUpdate(BaseModel):
-    full_name: Optional[str] = Field(None, min_length=2, max_length=100)
-    bio: Optional[str] = Field(None, max_length=500)
-    gender: Optional[str] = Field(None, regex="^(male|female|other)$")
+@dataclass
+class UserProfileUpdate:
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    gender: Optional[str] = None
     date_of_birth: Optional[datetime] = None
     spoken_languages: Optional[List[str]] = None
-    preferred_language: Optional[str] = Field(None, regex="^(uz|ru|en)$")
+    preferred_language: Optional[str] = None
     email: Optional[str] = None
 
 # --- TRAVEL PREFERENCES SCHEMAS ---
 
-class TravelPreferenceBase(BaseModel):
+@dataclass
+class TravelPreferenceBase:
     smoking_allowed: bool = False
     pets_allowed: bool = False
     music_allowed: bool = True
     talking_allowed: bool = True
-    preferred_driver_gender: Optional[str] = Field(None, regex="^(male|female|any)$")
-    preferred_passenger_gender: Optional[str] = Field(None, regex="^(male|female|any)$")
-    preferred_comfort_level: str = Field(default="economy", regex="^(economy|comfort|luxury)$")
-    max_price_per_km: Optional[Decimal] = Field(None, ge=0, le=10000)
+    preferred_driver_gender: Optional[str] = None
+    preferred_passenger_gender: Optional[str] = None
+    preferred_comfort_level: str = "economy"
+    max_price_per_km: Optional[Decimal] = None
 
+@dataclass
 class TravelPreferenceCreate(TravelPreferenceBase):
     pass
 
-class TravelPreferenceUpdate(BaseModel):
+@dataclass
+class TravelPreferenceUpdate:
     smoking_allowed: Optional[bool] = None
     pets_allowed: Optional[bool] = None
     music_allowed: Optional[bool] = None
     talking_allowed: Optional[bool] = None
-    preferred_driver_gender: Optional[str] = Field(None, regex="^(male|female|any)$")
-    preferred_passenger_gender: Optional[str] = Field(None, regex="^(male|female|any)$")
-    preferred_comfort_level: Optional[str] = Field(None, regex="^(economy|comfort|luxury)$")
-    max_price_per_km: Optional[Decimal] = Field(None, ge=0, le=10000)
+    preferred_driver_gender: Optional[str] = None
+    preferred_passenger_gender: Optional[str] = None
+    preferred_comfort_level: Optional[str] = None
+    max_price_per_km: Optional[Decimal] = None
 
+@dataclass
 class TravelPreferenceResponse(TravelPreferenceBase):
     id: UUID
     user_id: UUID
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+# --- CAR SCHEMAS ---
 
-# --- ENHANCED CAR SCHEMAS ---
-
-class CarBase(BaseModel):
-    make: str = Field(..., min_length=2, max_length=50)
-    model: str = Field(..., min_length=1, max_length=50)
-    license_plate: str = Field(..., min_length=4, max_length=15)
-    color: str = Field(..., min_length=3, max_length=30)
-    seats_count: Optional[int] = Field(default=4, ge=2, le=8)
-    is_default: Optional[bool] = Field(default=False)
-    
-    # NEW: Enhanced car fields
-    year: Optional[int] = Field(None, ge=1980, le=2030)
+@dataclass
+class CarBase:
+    make: str
+    model: str
+    license_plate: str
+    color: str
+    seats_count: Optional[int] = 4
+    is_default: Optional[bool] = False
+    year: Optional[int] = None
     car_image_url: Optional[str] = None
-    features: Optional[List[str]] = Field(default_factory=list)
-    comfort_level: Optional[str] = Field(default="economy", regex="^(economy|comfort|luxury)$")
+    features: Optional[List[str]] = field(default_factory=list)
+    comfort_level: Optional[str] = "economy"
 
-    @field_validator("features")
-    @classmethod
-    def validate_features(cls, v: List[str]) -> List[str]:
-        if v:
-            valid_features = {
-                "ac", "wifi", "music", "phone_charger", "gps", "dashcam", 
-                "leather_seats", "bluetooth", "aux_cable", "water"
-            }
-            if not all(feature in valid_features for feature in v):
-                raise ValueError("Invalid car feature")
-        return v or []
-
+@dataclass
 class CarCreate(CarBase):
     pass
 
-class CarUpdate(BaseModel):
-    make: Optional[str] = Field(None, min_length=2, max_length=50)
-    model: Optional[str] = Field(None, min_length=1, max_length=50)
-    license_plate: Optional[str] = Field(None, min_length=4, max_length=15)
-    color: Optional[str] = Field(None, min_length=3, max_length=30)
-    seats_count: Optional[int] = Field(None, ge=2, le=8)
+@dataclass
+class CarUpdate:
+    make: Optional[str] = None
+    model: Optional[str] = None
+    license_plate: Optional[str] = None
+    color: Optional[str] = None
+    seats_count: Optional[int] = None
     is_default: Optional[bool] = None
-    year: Optional[int] = Field(None, ge=1980, le=2030)
+    year: Optional[int] = None
     car_image_url: Optional[str] = None
     features: Optional[List[str]] = None
-    comfort_level: Optional[str] = Field(None, regex="^(economy|comfort|luxury)$")
+    comfort_level: Optional[str] = None
 
+@dataclass
 class CarResponse(CarBase):
     id: UUID
     driver_id: UUID
     verification_status: CarVerificationStatus
     admin_verification_notes: Optional[str] = None
-    is_default: bool
+    is_default: bool = False
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+# --- TRIP SCHEMAS ---
 
-# --- ENHANCED TRIP SCHEMAS ---
+@dataclass
+class IntermediateStop:
+    location: str
+    duration_minutes: int
 
-class IntermediateStop(BaseModel):
-    location: str = Field(..., min_length=3, max_length=200)
-    duration_minutes: int = Field(..., ge=5, le=120)
-
-class TripPreferences(BaseModel):
+@dataclass
+class TripPreferences:
     smoking: bool = False
     music: bool = True
     pets: bool = False
     talking: bool = True
 
-class RecurringPattern(BaseModel):
-    frequency: str = Field(..., regex="^(daily|weekly|monthly)$")
-    days: Optional[List[str]] = None  # ["monday", "tuesday", ...] for weekly
-    dates: Optional[List[int]] = None  # [1, 15] for monthly
+@dataclass
+class RecurringPattern:
+    frequency: str
+    days: Optional[List[str]] = None
+    dates: Optional[List[int]] = None
 
-    @field_validator("days")
-    @classmethod
-    def validate_days(cls, v, info):
-        if info.data.get("frequency") == "weekly" and v:
-            valid_days = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
-            if not all(day in valid_days for day in v):
-                raise ValueError("Invalid day name")
-        return v
-
-class TripBase(BaseModel):
-    from_location_text: str = Field(..., min_length=3)
-    to_location_text: str = Field(..., min_length=3)
+@dataclass
+class TripBase:
+    from_location_text: str
+    to_location_text: str
     departure_datetime: datetime
     estimated_arrival_datetime: Optional[datetime] = None
-    price_per_seat: Decimal = Field(..., ge=0)
-    total_seats_offered: int = Field(..., gt=0, le=7)
+    price_per_seat: Decimal = Decimal('0')
+    total_seats_offered: int = 1
     additional_info: Optional[str] = None
-    
-    # NEW: Enhanced trip fields
-    intermediate_stops: Optional[List[IntermediateStop]] = Field(default_factory=list)
-    trip_preferences: Optional[TripPreferences] = Field(default_factory=TripPreferences)
+    intermediate_stops: Optional[List[IntermediateStop]] = field(default_factory=list)
+    trip_preferences: Optional[TripPreferences] = field(default_factory=TripPreferences)
     is_recurring: bool = False
     recurring_pattern: Optional[RecurringPattern] = None
     is_instant_booking: bool = False
-    max_detour_km: int = Field(default=5, ge=0, le=50)
+    max_detour_km: int = 5
     price_negotiable: bool = False
-    estimated_distance_km: Optional[int] = Field(None, ge=1, le=5000)
-    estimated_duration_minutes: Optional[int] = Field(None, ge=5, le=1440)
+    estimated_distance_km: Optional[int] = None
+    estimated_duration_minutes: Optional[int] = None
 
+@dataclass
 class TripCreate(TripBase):
     car_id: UUID
 
-class TripUpdate(BaseModel):
-    from_location_text: Optional[str] = Field(None, min_length=3)
-    to_location_text: Optional[str] = Field(None, min_length=3)
+@dataclass
+class TripUpdate:
+    from_location_text: Optional[str] = None
+    to_location_text: Optional[str] = None
     departure_datetime: Optional[datetime] = None
     estimated_arrival_datetime: Optional[datetime] = None
-    price_per_seat: Optional[Decimal] = Field(None, ge=0)
-    total_seats_offered: Optional[int] = Field(None, gt=0, le=7)
+    price_per_seat: Optional[Decimal] = None
+    total_seats_offered: Optional[int] = None
     additional_info: Optional[str] = None
     status: Optional[TripStatus] = None
     intermediate_stops: Optional[List[IntermediateStop]] = None
     trip_preferences: Optional[TripPreferences] = None
     is_instant_booking: Optional[bool] = None
-    max_detour_km: Optional[int] = Field(None, ge=0, le=50)
+    max_detour_km: Optional[int] = None
     price_negotiable: Optional[bool] = None
-    estimated_distance_km: Optional[int] = Field(None, ge=1, le=5000)
-    estimated_duration_minutes: Optional[int] = Field(None, ge=5, le=1440)
+    estimated_distance_km: Optional[int] = None
+    estimated_duration_minutes: Optional[int] = None
 
+@dataclass
 class TripResponse(TripBase):
     id: UUID
     driver_id: UUID
@@ -306,41 +290,44 @@ class TripResponse(TripBase):
     driver: Optional[UserResponse] = None
     car: Optional[CarResponse] = None
 
-    model_config = ConfigDict(from_attributes=True)
-
-class TripSearchFilters(BaseModel):
+@dataclass
+class TripSearchFilters:
     from_location: Optional[str] = None
     to_location: Optional[str] = None
     departure_date: Optional[datetime] = None
-    seats_needed: int = Field(default=1, ge=1, le=7)
-    max_price: Optional[Decimal] = Field(None, ge=0)
-    comfort_level: Optional[str] = Field(None, regex="^(economy|comfort|luxury)$")
-    driver_gender: Optional[str] = Field(None, regex="^(male|female)$")
+    seats_needed: int = 1
+    max_price: Optional[Decimal] = None
+    comfort_level: Optional[str] = None
+    driver_gender: Optional[str] = None
     instant_booking_only: bool = False
     smoking_allowed: Optional[bool] = None
     pets_allowed: Optional[bool] = None
-    skip: int = Field(default=0, ge=0)
-    limit: int = Field(default=20, ge=1, le=100)
+    skip: int = 0
+    limit: int = 20
 
-# --- ENHANCED BOOKING SCHEMAS ---
+# --- BOOKING SCHEMAS ---
 
-class BookingBase(BaseModel):
+@dataclass
+class BookingBase:
     trip_id: UUID
-    seats_booked: int = Field(default=1, ge=1, le=4)
+    seats_booked: int = 1
     pickup_location: Optional[str] = None
     dropoff_location: Optional[str] = None
-    special_requests: Optional[str] = Field(None, max_length=500)
-    payment_method: str = Field(default="cash", regex="^(cash|card|wallet)$")
+    special_requests: Optional[str] = None
+    payment_method: str = "cash"
 
+@dataclass
 class BookingCreate(BookingBase):
     pass
 
-class BookingUpdate(BaseModel):
+@dataclass
+class BookingUpdate:
     status: Optional[BookingStatus] = None
     pickup_location: Optional[str] = None
     dropoff_location: Optional[str] = None
-    special_requests: Optional[str] = Field(None, max_length=500)
+    special_requests: Optional[str] = None
 
+@dataclass
 class BookingResponse(BookingBase):
     id: UUID
     passenger_id: UUID
@@ -352,54 +339,55 @@ class BookingResponse(BookingBase):
     trip: Optional[TripResponse] = None
     passenger: Optional[UserResponse] = None
 
-    model_config = ConfigDict(from_attributes=True)
+# --- MESSAGE SCHEMAS ---
 
-# --- MESSAGING SCHEMAS ---
-
-class MessageBase(BaseModel):
-    content: str = Field(..., min_length=1, max_length=1000)
+@dataclass
+class MessageBase:
+    content: str
     message_type: MessageType = MessageType.TEXT
-    metadata: Optional[Dict[str, Any]] = None
+    message_metadata: Optional[Dict[str, Any]] = None
 
+@dataclass
 class MessageCreate(MessageBase):
-    receiver_id: Optional[UUID] = None  # None for group messages
+    receiver_id: Optional[UUID] = None
 
+@dataclass
 class MessageResponse(MessageBase):
     id: UUID
     thread_id: UUID
     sender_id: UUID
     receiver_id: Optional[UUID] = None
-    is_read: bool
+    is_read: bool = False
     created_at: datetime
     sender: Optional[UserResponse] = None
     receiver: Optional[UserResponse] = None
 
-    model_config = ConfigDict(from_attributes=True)
-
-class MessageThreadResponse(BaseModel):
+@dataclass
+class MessageThreadResponse:
     id: UUID
     trip_id: UUID
     created_at: datetime
     trip: Optional[TripResponse] = None
-    messages: List[MessageResponse] = Field(default_factory=list)
-    participants: List[UserResponse] = Field(default_factory=list)
-
-    model_config = ConfigDict(from_attributes=True)
+    messages: List[MessageResponse] = field(default_factory=list)
+    participants: List[UserResponse] = field(default_factory=list)
 
 # --- RATING SCHEMAS ---
 
-class RatingBase(BaseModel):
-    rating: int = Field(..., ge=1, le=5)
-    review: Optional[str] = Field(None, max_length=1000)
-    punctuality: Optional[int] = Field(None, ge=1, le=5)
-    cleanliness: Optional[int] = Field(None, ge=1, le=5)
-    communication: Optional[int] = Field(None, ge=1, le=5)
-    driving_quality: Optional[int] = Field(None, ge=1, le=5)
+@dataclass
+class RatingBase:
+    rating: int  # 1-5
+    review: Optional[str] = None
+    punctuality: Optional[int] = None
+    cleanliness: Optional[int] = None
+    communication: Optional[int] = None
+    driving_quality: Optional[int] = None
 
+@dataclass
 class RatingCreate(RatingBase):
     rated_user_id: UUID
     booking_id: Optional[UUID] = None
 
+@dataclass
 class RatingResponse(RatingBase):
     id: UUID
     trip_id: UUID
@@ -411,28 +399,30 @@ class RatingResponse(RatingBase):
     rater: Optional[UserResponse] = None
     rated_user: Optional[UserResponse] = None
 
-    model_config = ConfigDict(from_attributes=True)
-
-class UserRatingsSummary(BaseModel):
+@dataclass
+class UserRatingsSummary:
     average_rating: float
     total_ratings: int
-    rating_breakdown: Dict[int, int]  # {5: 10, 4: 5, 3: 2, 2: 1, 1: 0}
-    recent_reviews: List[RatingResponse] = Field(default_factory=list)
+    rating_breakdown: Dict[int, int] = field(default_factory=dict)
+    recent_reviews: List[RatingResponse] = field(default_factory=list)
 
 # --- NOTIFICATION SCHEMAS ---
 
-class NotificationBase(BaseModel):
+@dataclass
+class NotificationBase:
     notification_type: NotificationType
-    title: str = Field(..., max_length=200)
-    content: str = Field(..., max_length=1000)
+    title: str
+    content: str
     data: Optional[Dict[str, Any]] = None
     scheduled_at: Optional[datetime] = None
 
+@dataclass
 class NotificationCreate(NotificationBase):
     user_id: UUID
     phone_number: Optional[str] = None
     push_token: Optional[str] = None
 
+@dataclass
 class NotificationResponse(NotificationBase):
     id: UUID
     user_id: UUID
@@ -441,55 +431,50 @@ class NotificationResponse(NotificationBase):
     delivered_at: Optional[datetime] = None
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
-
 # --- EMERGENCY SCHEMAS ---
 
-class EmergencyContactBase(BaseModel):
-    name: str = Field(..., min_length=2, max_length=100)
+@dataclass
+class EmergencyContactBase:
+    name: str
     phone_number: str
-    relationship: str = Field(..., min_length=2, max_length=50)
+    relationship: str
     is_primary: bool = False
 
-    @field_validator("phone_number")
-    @classmethod
-    def validate_phone_number(cls, v: str) -> str:
-        if not re.match(PHONE_REGEX, v):
-            raise ValueError("Phone number must be in Uzbekistan format: +998XXXXXXXXX")
-        return v
+    def __post_init__(self):
+        self.phone_number = validate_phone_number(self.phone_number)
 
+@dataclass
 class EmergencyContactCreate(EmergencyContactBase):
     pass
 
-class EmergencyContactUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=2, max_length=100)
+@dataclass
+class EmergencyContactUpdate:
+    name: Optional[str] = None
     phone_number: Optional[str] = None
-    relationship: Optional[str] = Field(None, min_length=2, max_length=50)
+    relationship: Optional[str] = None
     is_primary: Optional[bool] = None
 
-    @field_validator("phone_number")
-    @classmethod
-    def validate_phone_number(cls, v: str) -> str:
-        if v and not re.match(PHONE_REGEX, v):
-            raise ValueError("Phone number must be in Uzbekistan format: +998XXXXXXXXX")
-        return v
+    def __post_init__(self):
+        if self.phone_number:
+            self.phone_number = validate_phone_number(self.phone_number)
 
+@dataclass
 class EmergencyContactResponse(EmergencyContactBase):
     id: UUID
     user_id: UUID
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
-
-class EmergencyAlertCreate(BaseModel):
+@dataclass
+class EmergencyAlertCreate:
     emergency_type: EmergencyType
-    description: Optional[str] = Field(None, max_length=1000)
-    location_lat: Optional[Decimal] = Field(None, ge=-90, le=90)
-    location_lng: Optional[Decimal] = Field(None, ge=-180, le=180)
+    description: Optional[str] = None
+    location_lat: Optional[Decimal] = None
+    location_lng: Optional[Decimal] = None
     location_address: Optional[str] = None
     trip_id: Optional[UUID] = None
 
-class EmergencyAlertResponse(BaseModel):
+@dataclass
+class EmergencyAlertResponse:
     id: UUID
     user_id: UUID
     trip_id: Optional[UUID] = None
@@ -498,36 +483,37 @@ class EmergencyAlertResponse(BaseModel):
     location_lat: Optional[Decimal] = None
     location_lng: Optional[Decimal] = None
     location_address: Optional[str] = None
-    is_resolved: bool
+    is_resolved: bool = False
     resolved_at: Optional[datetime] = None
     resolved_by: Optional[UUID] = None
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
-
 # --- PRICE NEGOTIATION SCHEMAS ---
 
-class PriceNegotiationCreate(BaseModel):
+@dataclass
+class PriceNegotiationCreate:
     trip_id: UUID
-    proposed_price: Decimal = Field(..., ge=0)
-    seats_requested: int = Field(default=1, ge=1, le=7)
-    message: Optional[str] = Field(None, max_length=500)
+    proposed_price: Decimal
+    seats_requested: int = 1
+    message: Optional[str] = None
 
-class PriceNegotiationResponse(BaseModel):
-    response: str = Field(..., regex="^(accept|reject)$")
-    final_price: Optional[Decimal] = Field(None, ge=0)
-    response_message: Optional[str] = Field(None, max_length=500)
+@dataclass
+class PriceNegotiationResponse:
+    response: str  # accept/reject
+    final_price: Optional[Decimal] = None
+    response_message: Optional[str] = None
 
-class PriceNegotiationDetail(BaseModel):
+@dataclass
+class PriceNegotiationDetail:
     id: UUID
     trip_id: UUID
     passenger_id: UUID
     original_price: Decimal
     proposed_price: Decimal
     final_price: Optional[Decimal] = None
-    seats_requested: int
+    seats_requested: int = 1
     message: Optional[str] = None
-    status: PriceNegotiationStatus
+    status: PriceNegotiationStatus = PriceNegotiationStatus.PENDING
     expires_at: datetime
     responded_at: Optional[datetime] = None
     response_message: Optional[str] = None
@@ -535,11 +521,10 @@ class PriceNegotiationDetail(BaseModel):
     passenger: Optional[UserResponse] = None
     trip: Optional[TripResponse] = None
 
-    model_config = ConfigDict(from_attributes=True)
-
 # --- USER SETTINGS SCHEMAS ---
 
-class UserSettingsBase(BaseModel):
+@dataclass
+class UserSettingsBase:
     sms_notifications: bool = True
     push_notifications: bool = True
     email_notifications: bool = False
@@ -549,7 +534,8 @@ class UserSettingsBase(BaseModel):
     auto_location_detection: bool = True
     save_frequent_routes: bool = True
 
-class UserSettingsUpdate(BaseModel):
+@dataclass
+class UserSettingsUpdate:
     sms_notifications: Optional[bool] = None
     push_notifications: Optional[bool] = None
     email_notifications: Optional[bool] = None
@@ -559,111 +545,82 @@ class UserSettingsUpdate(BaseModel):
     auto_location_detection: Optional[bool] = None
     save_frequent_routes: Optional[bool] = None
 
+@dataclass
 class UserSettingsResponse(UserSettingsBase):
     id: UUID
     user_id: UUID
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 # --- PRICE RECOMMENDATION SCHEMAS ---
 
-class PriceRecommendationRequest(BaseModel):
+@dataclass
+class PriceRecommendationRequest:
     from_location: str
     to_location: str
     distance_km: Optional[int] = None
     estimated_duration_minutes: Optional[int] = None
     departure_datetime: Optional[datetime] = None
-    comfort_level: str = Field(default="economy", regex="^(economy|comfort|luxury)$")
+    comfort_level: str = "economy"
 
-class PriceRecommendationResponse(BaseModel):
+@dataclass
+class PriceRecommendationResponse:
     recommended_price: Decimal
     min_price: Decimal
     max_price: Decimal
     market_average: Decimal
-    factors: Dict[str, Any]  # Explanation of price factors
+    factors: Dict[str, Any] = field(default_factory=dict)
 
-# --- ANALYTICS SCHEMAS ---
+# --- AUTH SCHEMAS ---
 
-class TripAnalytics(BaseModel):
-    total_trips_created: int
-    total_trips_completed: int
-    total_revenue: Decimal
-    average_rating: float
-    popular_routes: List[Dict[str, Any]]
-    peak_hours: List[int]
-
-class UserAnalytics(BaseModel):
-    total_trips: int
-    total_distance_km: int
-    average_rating: float
-    preferred_routes: List[str]
-    carbon_footprint_saved: float  # kg CO2
-
-# --- ADMIN SCHEMAS ---
-
-class AdminUpdateStatusRequest(BaseModel):
-    admin_notes: Optional[str] = Field(None, description="Optional notes from the admin regarding the verification status update.", max_length=1000)
-
-class AdminDashboardStats(BaseModel):
-    total_users: int
-    total_drivers: int
-    pending_driver_verifications: int
-    pending_car_verifications: int
-    total_trips_today: int
-    total_bookings_today: int
-    revenue_today: Decimal
-    active_emergencies: int
-
-# --- SMS AND AUTH SCHEMAS (Enhanced) ---
-
-class SMSVerificationCreate(BaseModel):
+@dataclass
+class SMSVerificationCreate:
     phone_number: str
     code: str
     expires_at: datetime
 
-class SMSVerificationRequest(BaseModel):
-    phone_number: str = Field(..., description="Phone number in Uzbekistan format: +998XXXXXXXXX")
-    code: str = Field(..., min_length=6, max_length=6, description="6-digit verification code")
+@dataclass
+class SMSVerificationRequest:
+    phone_number: str
+    code: str
 
-    @field_validator("phone_number")
-    @classmethod
-    def validate_phone_number(cls, v: str) -> str:
-        if not re.match(PHONE_REGEX, v):
-            raise ValueError("Phone number must be in Uzbekistan format: +998XXXXXXXXX")
-        return v
+    def __post_init__(self):
+        self.phone_number = validate_phone_number(self.phone_number)
+        if not self.code.isdigit() or len(self.code) != 6:
+            raise ValueError("Verification code must be 6 digits")
 
-    @field_validator("code")
-    @classmethod
-    def validate_code(cls, v: str) -> str:
-        if not v.isdigit():
-            raise ValueError("Verification code must contain only digits")
-        return v
+@dataclass
+class UserVerifyOTPAndSetProfileRequest:
+    phone_number: str
+    code: str
+    full_name: str
+    gender: Optional[str] = None
+    preferred_language: str = "uz"
 
-class UserVerifyOTPAndSetProfileRequest(BaseModel):
-    phone_number: str = Field(..., description="Phone number in Uzbekistan format: +998XXXXXXXXX")
-    code: str = Field(..., min_length=6, max_length=6, description="6-digit verification code")
-    full_name: str = Field(..., min_length=2, max_length=100, description="User's full name")
-    gender: Optional[str] = Field(None, regex="^(male|female|other)$")
-    preferred_language: str = Field(default="uz", regex="^(uz|ru|en)$")
+    def __post_init__(self):
+        self.phone_number = validate_phone_number(self.phone_number)
+        if not self.code.isdigit() or len(self.code) != 6:
+            raise ValueError("Verification code must be 6 digits")
 
-    @field_validator("phone_number")
-    @classmethod
-    def validate_phone_number(cls, v: str) -> str:
-        if not re.match(PHONE_REGEX, v):
-            raise ValueError("Phone number must be in Uzbekistan format: +998XXXXXXXXX")
-        return v
-
-    @field_validator("code")
-    @classmethod
-    def validate_code(cls, v: str) -> str:
-        if not v.isdigit():
-            raise ValueError("Verification code must contain only digits")
-        return v
-
-class TokenResponse(BaseModel):
+@dataclass
+class TokenResponse:
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+# --- ADMIN SCHEMAS ---
+
+@dataclass
+class AdminUpdateStatusRequest:
+    admin_notes: Optional[str] = None
+
+@dataclass
+class AdminDashboardStats:
+    total_users: int = 0
+    total_drivers: int = 0
+    pending_driver_verifications: int = 0
+    pending_car_verifications: int = 0
+    total_trips_today: int = 0
+    total_bookings_today: int = 0
+    revenue_today: Decimal = Decimal('0')
+    active_emergencies: int = 0

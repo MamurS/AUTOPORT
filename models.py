@@ -285,7 +285,7 @@ class Message(Base):
     
     message_type = Column(SQLAlchemyEnum(MessageType), default=MessageType.TEXT)
     content = Column(Text, nullable=False)
-    metadata = Column(JSON, nullable=True)  # For location, system messages, etc.
+    message_metadata = Column(JSON, nullable=True)  # For location, system messages, etc.
     
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
