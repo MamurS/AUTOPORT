@@ -358,7 +358,7 @@ class EmergencyContact(Base):
     
     name = Column(String(100), nullable=False)
     phone_number = Column(String(20), nullable=False)
-    relationship = Column(String(50), nullable=False)  # family, friend, colleague
+    relationship_type = Column(String(50), nullable=False)  # family, friend, colleague
     is_primary = Column(Boolean, default=False)
     
     created_at = Column(DateTime, nullable=False, server_default=func.now())

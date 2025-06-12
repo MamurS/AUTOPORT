@@ -437,7 +437,7 @@ class NotificationResponse(NotificationBase):
 class EmergencyContactBase:
     name: str
     phone_number: str
-    relationship: str
+    relationship_type: str
     is_primary: bool = False
 
     def __post_init__(self):
@@ -451,7 +451,7 @@ class EmergencyContactCreate(EmergencyContactBase):
 class EmergencyContactUpdate:
     name: Optional[str] = None
     phone_number: Optional[str] = None
-    relationship: Optional[str] = None
+    relationship_type: Optional[str] = None
     is_primary: Optional[bool] = None
 
     def __post_init__(self):
