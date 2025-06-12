@@ -121,14 +121,27 @@ class UserCreateProfile:
     preferred_language: str = "uz"
 
 @dataclass
-class UserResponse(UserBase):
+class UserResponse:
+    # Required fields first
     id: UUID
+    phone_number: str
     status: UserStatus
+    created_at: datetime
+    updated_at: datetime
+    # Optional fields with defaults
+    full_name: Optional[str] = None
+    role: UserRole = UserRole.PASSENGER
+    profile_image_url: Optional[str] = None
+    date_of_birth: Optional[datetime] = None
+    gender: Optional[str] = None
+    spoken_languages: Optional[List[str]] = field(default_factory=lambda: ["uz"])
+    bio: Optional[str] = None
+    email: Optional[str] = None
+    preferred_language: str = "uz"
+    currency_preference: str = "UZS"
     admin_verification_notes: Optional[str] = None
     is_phone_verified: bool = False
     is_email_verified: bool = False
-    created_at: datetime
-    updated_at: datetime
 
 @dataclass
 class UserProfileUpdate:
@@ -169,11 +182,21 @@ class TravelPreferenceUpdate:
     max_price_per_km: Optional[Decimal] = None
 
 @dataclass
-class TravelPreferenceResponse(TravelPreferenceBase):
+class TravelPreferenceResponse:
+    # Required fields first
     id: UUID
     user_id: UUID
     created_at: datetime
     updated_at: datetime
+    # Optional fields with defaults from base
+    smoking_allowed: bool = False
+    pets_allowed: bool = False
+    music_allowed: bool = True
+    talking_allowed: bool = True
+    preferred_driver_gender: Optional[str] = None
+    preferred_passenger_gender: Optional[str] = None
+    preferred_comfort_level: str = "economy"
+    max_price_per_km: Optional[Decimal] = None
 
 # --- CAR SCHEMAS ---
 
@@ -208,14 +231,25 @@ class CarUpdate:
     comfort_level: Optional[str] = None
 
 @dataclass
-class CarResponse(CarBase):
+class CarResponse:
+    # Required fields first
     id: UUID
     driver_id: UUID
     verification_status: CarVerificationStatus
-    admin_verification_notes: Optional[str] = None
-    is_default: bool = False
     created_at: datetime
     updated_at: datetime
+    # Fields from base with defaults
+    make: str = ""
+    model: str = ""
+    license_plate: str = ""
+    color: str = ""
+    seats_count: Optional[int] = 4
+    is_default: bool = False
+    year: Optional[int] = None
+    car_image_url: Optional[str] = None
+    features: Optional[List[str]] = field(default_factory=list)
+    comfort_level: Optional[str] = "economy"
+    admin_verification_notes: Optional[str] = None
 
 # --- TRIP SCHEMAS ---
 
@@ -257,8 +291,26 @@ class TripBase:
     estimated_duration_minutes: Optional[int] = None
 
 @dataclass
-class TripCreate(TripBase):
+class TripCreate:
+    # Required fields first
     car_id: UUID
+    from_location_text: str
+    to_location_text: str
+    departure_datetime: datetime
+    # Optional fields with defaults
+    estimated_arrival_datetime: Optional[datetime] = None
+    price_per_seat: Decimal = Decimal('0')
+    total_seats_offered: int = 1
+    additional_info: Optional[str] = None
+    intermediate_stops: Optional[List[IntermediateStop]] = field(default_factory=list)
+    trip_preferences: Optional[TripPreferences] = field(default_factory=TripPreferences)
+    is_recurring: bool = False
+    recurring_pattern: Optional[RecurringPattern] = None
+    is_instant_booking: bool = False
+    max_detour_km: int = 5
+    price_negotiable: bool = False
+    estimated_distance_km: Optional[int] = None
+    estimated_duration_minutes: Optional[int] = None
 
 @dataclass
 class TripUpdate:
@@ -279,7 +331,8 @@ class TripUpdate:
     estimated_duration_minutes: Optional[int] = None
 
 @dataclass
-class TripResponse(TripBase):
+class TripResponse:
+    # Required fields first
     id: UUID
     driver_id: UUID
     car_id: UUID
@@ -287,6 +340,23 @@ class TripResponse(TripBase):
     status: TripStatus
     created_at: datetime
     updated_at: datetime
+    # Fields from base with defaults
+    from_location_text: str = ""
+    to_location_text: str = ""
+    departure_datetime: Optional[datetime] = None
+    estimated_arrival_datetime: Optional[datetime] = None
+    price_per_seat: Decimal = Decimal('0')
+    total_seats_offered: int = 1
+    additional_info: Optional[str] = None
+    intermediate_stops: Optional[List[IntermediateStop]] = field(default_factory=list)
+    trip_preferences: Optional[TripPreferences] = field(default_factory=TripPreferences)
+    is_recurring: bool = False
+    recurring_pattern: Optional[RecurringPattern] = None
+    is_instant_booking: bool = False
+    max_detour_km: int = 5
+    price_negotiable: bool = False
+    estimated_distance_km: Optional[int] = None
+    estimated_duration_minutes: Optional[int] = None
     driver: Optional[UserResponse] = None
     car: Optional[CarResponse] = None
 
@@ -317,8 +387,13 @@ class BookingBase:
     payment_method: str = "cash"
 
 @dataclass
-class BookingCreate(BookingBase):
-    pass
+class BookingCreate:
+    trip_id: UUID
+    seats_booked: int = 1
+    pickup_location: Optional[str] = None
+    dropoff_location: Optional[str] = None
+    special_requests: Optional[str] = None
+    payment_method: str = "cash"
 
 @dataclass
 class BookingUpdate:
@@ -328,14 +403,22 @@ class BookingUpdate:
     special_requests: Optional[str] = None
 
 @dataclass
-class BookingResponse(BookingBase):
+class BookingResponse:
+    # Required fields first
     id: UUID
     passenger_id: UUID
+    trip_id: UUID
     total_price: Decimal
     status: BookingStatus
     booking_time: datetime
     created_at: datetime
     updated_at: datetime
+    # Optional fields with defaults
+    seats_booked: int = 1
+    pickup_location: Optional[str] = None
+    dropoff_location: Optional[str] = None
+    special_requests: Optional[str] = None
+    payment_method: str = "cash"
     trip: Optional[TripResponse] = None
     passenger: Optional[UserResponse] = None
 
@@ -348,17 +431,25 @@ class MessageBase:
     message_metadata: Optional[Dict[str, Any]] = None
 
 @dataclass
-class MessageCreate(MessageBase):
+class MessageCreate:
+    content: str
+    message_type: MessageType = MessageType.TEXT
+    message_metadata: Optional[Dict[str, Any]] = None
     receiver_id: Optional[UUID] = None
 
 @dataclass
-class MessageResponse(MessageBase):
+class MessageResponse:
+    # Required fields first
     id: UUID
     thread_id: UUID
     sender_id: UUID
+    created_at: datetime
+    # Optional fields with defaults
+    content: str = ""
+    message_type: MessageType = MessageType.TEXT
+    message_metadata: Optional[Dict[str, Any]] = None
     receiver_id: Optional[UUID] = None
     is_read: bool = False
-    created_at: datetime
     sender: Optional[UserResponse] = None
     receiver: Optional[UserResponse] = None
 
@@ -383,19 +474,33 @@ class RatingBase:
     driving_quality: Optional[int] = None
 
 @dataclass
-class RatingCreate(RatingBase):
+class RatingCreate:
     rated_user_id: UUID
+    rating: int  # 1-5
+    review: Optional[str] = None
+    punctuality: Optional[int] = None
+    cleanliness: Optional[int] = None
+    communication: Optional[int] = None
+    driving_quality: Optional[int] = None
     booking_id: Optional[UUID] = None
 
 @dataclass
-class RatingResponse(RatingBase):
+class RatingResponse:
+    # Required fields first
     id: UUID
     trip_id: UUID
-    booking_id: Optional[UUID] = None
     rater_id: UUID
     rated_user_id: UUID
     rating_type: RatingType
     created_at: datetime
+    # Optional fields with defaults
+    rating: int = 1
+    review: Optional[str] = None
+    punctuality: Optional[int] = None
+    cleanliness: Optional[int] = None
+    communication: Optional[int] = None
+    driving_quality: Optional[int] = None
+    booking_id: Optional[UUID] = None
     rater: Optional[UserResponse] = None
     rated_user: Optional[UserResponse] = None
 
@@ -417,19 +522,31 @@ class NotificationBase:
     scheduled_at: Optional[datetime] = None
 
 @dataclass
-class NotificationCreate(NotificationBase):
+class NotificationCreate:
     user_id: UUID
+    notification_type: NotificationType
+    title: str
+    content: str
+    data: Optional[Dict[str, Any]] = None
+    scheduled_at: Optional[datetime] = None
     phone_number: Optional[str] = None
     push_token: Optional[str] = None
 
 @dataclass
-class NotificationResponse(NotificationBase):
+class NotificationResponse:
+    # Required fields first
     id: UUID
     user_id: UUID
+    notification_type: NotificationType
+    title: str
+    content: str
     status: NotificationStatus
+    created_at: datetime
+    # Optional fields with defaults
+    data: Optional[Dict[str, Any]] = None
+    scheduled_at: Optional[datetime] = None
     sent_at: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
-    created_at: datetime
 
 # --- EMERGENCY SCHEMAS ---
 
@@ -444,8 +561,14 @@ class EmergencyContactBase:
         self.phone_number = validate_phone_number(self.phone_number)
 
 @dataclass
-class EmergencyContactCreate(EmergencyContactBase):
-    pass
+class EmergencyContactCreate:
+    name: str
+    phone_number: str
+    relationship_type: str
+    is_primary: bool = False
+
+    def __post_init__(self):
+        self.phone_number = validate_phone_number(self.phone_number)
 
 @dataclass
 class EmergencyContactUpdate:
@@ -459,10 +582,16 @@ class EmergencyContactUpdate:
             self.phone_number = validate_phone_number(self.phone_number)
 
 @dataclass
-class EmergencyContactResponse(EmergencyContactBase):
+class EmergencyContactResponse:
+    # Required fields first
     id: UUID
     user_id: UUID
     created_at: datetime
+    # Fields from base with defaults
+    name: str = ""
+    phone_number: str = ""
+    relationship_type: str = ""
+    is_primary: bool = False
 
 @dataclass
 class EmergencyAlertCreate:
@@ -477,8 +606,9 @@ class EmergencyAlertCreate:
 class EmergencyAlertResponse:
     id: UUID
     user_id: UUID
-    trip_id: Optional[UUID] = None
     emergency_type: EmergencyType
+    created_at: datetime
+    trip_id: Optional[UUID] = None
     description: Optional[str] = None
     location_lat: Optional[Decimal] = None
     location_lng: Optional[Decimal] = None
@@ -486,7 +616,6 @@ class EmergencyAlertResponse:
     is_resolved: bool = False
     resolved_at: Optional[datetime] = None
     resolved_by: Optional[UUID] = None
-    created_at: datetime
 
 # --- PRICE NEGOTIATION SCHEMAS ---
 
@@ -505,19 +634,21 @@ class PriceNegotiationResponse:
 
 @dataclass
 class PriceNegotiationDetail:
+    # Required fields first
     id: UUID
     trip_id: UUID
     passenger_id: UUID
     original_price: Decimal
     proposed_price: Decimal
+    expires_at: datetime
+    created_at: datetime
+    # Optional fields with defaults
     final_price: Optional[Decimal] = None
     seats_requested: int = 1
     message: Optional[str] = None
     status: PriceNegotiationStatus = PriceNegotiationStatus.PENDING
-    expires_at: datetime
     responded_at: Optional[datetime] = None
     response_message: Optional[str] = None
-    created_at: datetime
     passenger: Optional[UserResponse] = None
     trip: Optional[TripResponse] = None
 
@@ -546,11 +677,21 @@ class UserSettingsUpdate:
     save_frequent_routes: Optional[bool] = None
 
 @dataclass
-class UserSettingsResponse(UserSettingsBase):
+class UserSettingsResponse:
+    # Required fields first
     id: UUID
     user_id: UUID
     created_at: datetime
     updated_at: datetime
+    # Optional fields with defaults
+    sms_notifications: bool = True
+    push_notifications: bool = True
+    email_notifications: bool = False
+    show_phone_to_driver: bool = True
+    show_profile_picture: bool = True
+    allow_contact_from_passengers: bool = True
+    auto_location_detection: bool = True
+    save_frequent_routes: bool = True
 
 # --- PRICE RECOMMENDATION SCHEMAS ---
 
@@ -605,8 +746,8 @@ class UserVerifyOTPAndSetProfileRequest:
 @dataclass
 class TokenResponse:
     access_token: str
-    token_type: str = "bearer"
     user: UserResponse
+    token_type: str = "bearer"
 
 # --- ADMIN SCHEMAS ---
 

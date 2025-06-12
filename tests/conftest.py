@@ -10,7 +10,7 @@ from database import Base, get_db
 from config import settings
 
 # Test database URL
-TEST_DATABASE_URL = settings.DATABASE_URL.replace("/autoport", "/autoport_test")
+TEST_DATABASE_URL = str(settings.DATABASE_URL).replace("/autoport", "/autoport_test")
 
 # Create test engine
 test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
