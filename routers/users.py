@@ -1,4 +1,4 @@
-# File: routers/users.py (Enhanced with comprehensive user management)
+# File: routers/users.py (Enhanced with comprehensive user management - FIXED)
 
 import logging
 from typing import Annotated, List, Optional
@@ -22,18 +22,43 @@ from schemas import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["users"])
 
+# --- HELPER FUNCTION FOR SERIALIZATION ---
+
+def convert_user_to_response(user: User) -> UserResponse:
+    """Convert SQLAlchemy User model to Pydantic UserResponse"""
+    return UserResponse(
+        id=user.id,
+        phone_number=user.phone_number,
+        full_name=user.full_name,
+        role=user.role,
+        status=user.status,
+        admin_verification_notes=user.admin_verification_notes,
+        profile_image_url=user.profile_image_url,
+        date_of_birth=user.date_of_birth,
+        gender=user.gender,
+        spoken_languages=user.spoken_languages or ["uz"],
+        bio=user.bio,
+        is_phone_verified=user.is_phone_verified or False,
+        is_email_verified=user.is_email_verified or False,
+        email=user.email,
+        preferred_language=user.preferred_language or "uz",
+        currency_preference=user.currency_preference or "UZS",
+        created_at=user.created_at,
+        updated_at=user.updated_at
+    )
+
 # --- BASIC USER PROFILE ---
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_profile(
     current_user: Annotated[User, Depends(get_current_active_user)]
-) -> User:
+) -> UserResponse:
     """
     Get the complete profile of the currently authenticated user.
     
     This endpoint requires a valid JWT token in the Authorization header.
     """
-    return current_user
+    return convert_user_to_response(current_user)
 
 @router.patch("/me", response_model=UserResponse)
 async def update_my_profile(
@@ -53,7 +78,7 @@ async def update_my_profile(
         )
         
         logger.info(f"Profile updated for user {current_user.id}")
-        return updated_user
+        return convert_user_to_response(updated_user)
     except Exception as e:
         logger.error(f"Error updating user profile: {e}", exc_info=True)
         raise HTTPException(
@@ -65,7 +90,7 @@ async def update_my_profile(
 async def apply_to_become_driver(
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)]
-) -> User:
+) -> UserResponse:
     """
     Apply to become a driver.
     
@@ -77,7 +102,7 @@ async def apply_to_become_driver(
     """
     try:
         updated_user = await auth_crud.request_driver_role(db, current_user)
-        return updated_user
+        return convert_user_to_response(updated_user)
     except HTTPException:
         raise
     except Exception as e:
