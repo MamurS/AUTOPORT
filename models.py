@@ -111,6 +111,9 @@ class User(Base):
     received_messages = relationship("Message", foreign_keys="[Message.receiver_id]", back_populates="receiver")
     given_ratings = relationship("Rating", foreign_keys="[Rating.rater_id]", back_populates="rater")
     received_ratings = relationship("Rating", foreign_keys="[Rating.rated_user_id]", back_populates="rated_user")
+    # FIXED: Add back_populates for EmergencyAlert relationships
+    emergency_alerts = relationship("EmergencyAlert", foreign_keys="[EmergencyAlert.user_id]", back_populates="user")
+    resolved_emergency_alerts = relationship("EmergencyAlert", foreign_keys="[EmergencyAlert.resolved_by]", back_populates="resolved_by_user")
 
     def __repr__(self) -> str:
         return f"<User {self.phone_number}>"
@@ -385,8 +388,10 @@ class EmergencyAlert(Base):
     
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
-    user = relationship("User")
+    # FIXED: Specify foreign_keys explicitly for each relationship
+    user = relationship("User", foreign_keys=[user_id], back_populates="emergency_alerts")
     trip = relationship("Trip")
+    resolved_by_user = relationship("User", foreign_keys=[resolved_by], back_populates="resolved_emergency_alerts")
 
 class PriceNegotiation(Base):
     """Price negotiation for flexible pricing"""
