@@ -1,11 +1,14 @@
 # File: main.py (Complete updated version with admin auth)
 
 import logging
+import time
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text  # ADD THIS IMPORT
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import existing routers
@@ -49,7 +52,7 @@ async def lifespan(app: FastAPI):
     # Test database connection
     try:
         async with engine.begin() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))  # FIX: Add text() wrapper
         logger.info("✅ Database connection successful")
     except Exception as e:
         logger.error(f"❌ Database connection failed: {e}")
@@ -220,7 +223,7 @@ async def health_check():
     try:
         # Test database connection
         async with engine.begin() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))  # FIX: Add text() wrapper
         
         return {
             "status": "healthy",
@@ -271,10 +274,6 @@ async def api_info():
             "admin_panel": f"{settings.API_V1_STR}/admin"
         }
     }
-
-# Import time for request logging
-import time
-from datetime import datetime
 
 if __name__ == "__main__":
     import uvicorn
