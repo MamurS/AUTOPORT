@@ -1,4 +1,4 @@
-# File: models.py (Fixed with proper imports and dependencies)
+# File: models.py (Complete updated version with admin security)
 
 import uuid
 from enum import Enum
@@ -16,6 +16,12 @@ class UserRole(str, Enum):
     PASSENGER = "passenger"
     DRIVER = "driver"
     ADMIN = "admin"
+    SUPER_ADMIN = "super_admin"  # NEW: Can manage other admins
+
+class AdminRole(str, Enum):
+    ADMIN = "admin"              # Can manage users, drivers, cars
+    SUPER_ADMIN = "super_admin"  # Can manage other admins
+    MODERATOR = "moderator"      # Limited permissions
 
 class UserStatus(str, Enum):
     PENDING_SMS_VERIFICATION = "pending_sms_verification"
@@ -73,7 +79,7 @@ class EmergencyType(str, Enum):
     BREAKDOWN = "breakdown"
     HARASSMENT = "harassment"
 
-# --- EXISTING MODELS (Enhanced) ---
+# --- ENHANCED USER MODEL ---
 class User(Base):
     __tablename__ = "users"
 
@@ -84,21 +90,28 @@ class User(Base):
     status = Column(SQLAlchemyEnum(UserStatus), nullable=False, default=UserStatus.PENDING_SMS_VERIFICATION)
     admin_verification_notes = Column(Text, nullable=True)
     
-    # NEW: Enhanced profile fields
+    # Enhanced profile fields
     profile_image_url = Column(String, nullable=True)
     date_of_birth = Column(DateTime, nullable=True)
     gender = Column(String(10), nullable=True)  # male, female, other
     spoken_languages = Column(JSON, nullable=True)  # ["uz", "ru", "en"]
     bio = Column(Text, nullable=True)
     
-    # NEW: Verification fields
+    # Verification fields
     is_phone_verified = Column(Boolean, default=False)
     is_email_verified = Column(Boolean, default=False)
     email = Column(String, nullable=True)
     
-    # NEW: Preferences
+    # Preferences
     preferred_language = Column(String(5), default="uz")  # uz, ru, en
     currency_preference = Column(String(3), default="UZS")  # UZS, USD
+    
+    # NEW: Admin-specific fields (only used when role is ADMIN/SUPER_ADMIN)
+    password_hash = Column(String, nullable=True)  # For admin authentication
+    failed_login_attempts = Column(Integer, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    last_admin_login = Column(DateTime, nullable=True)
+    password_changed_at = Column(DateTime, nullable=True)
     
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
@@ -111,7 +124,6 @@ class User(Base):
     received_messages = relationship("Message", foreign_keys="[Message.receiver_id]", back_populates="receiver")
     given_ratings = relationship("Rating", foreign_keys="[Rating.rater_id]", back_populates="rater")
     received_ratings = relationship("Rating", foreign_keys="[Rating.rated_user_id]", back_populates="rated_user")
-    # FIXED: Add back_populates for EmergencyAlert relationships
     emergency_alerts = relationship("EmergencyAlert", foreign_keys="[EmergencyAlert.user_id]", back_populates="user")
     resolved_emergency_alerts = relationship("EmergencyAlert", foreign_keys="[EmergencyAlert.resolved_by]", back_populates="resolved_by_user")
 
@@ -131,6 +143,69 @@ class SMSVerification(Base):
     def __repr__(self) -> str:
         return f"<SMSVerification {self.phone_number}>"
 
+# --- NEW: ADMIN SECURITY TABLES ---
+
+class AdminInvitation(Base):
+    """Secure admin invitation system"""
+    __tablename__ = "admin_invitations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String, nullable=False, index=True)
+    invited_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    token = Column(String(255), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    is_used = Column(Boolean, default=False)
+    role = Column(SQLAlchemyEnum(AdminRole), default=AdminRole.ADMIN)
+    
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    inviter = relationship("User", backref="sent_admin_invitations")
+
+class AdminMFAToken(Base):
+    """Multi-factor authentication tokens for admin login"""
+    __tablename__ = "admin_mfa_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admin_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    code = Column(String(6), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    is_used = Column(Boolean, default=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    admin = relationship("User")
+
+class AdminAuditLog(Base):
+    """Comprehensive audit logging for admin actions"""
+    __tablename__ = "admin_audit_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admin_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    action = Column(String(100), nullable=False)  # "approve_driver", "reject_car", "login"
+    resource_type = Column(String(50), nullable=True)  # "driver", "car", "user"
+    resource_id = Column(UUID(as_uuid=True), nullable=True)
+    details = Column(JSON, nullable=True)  # Additional context
+    ip_address = Column(String(45), nullable=True)  # IPv4/IPv6
+    user_agent = Column(String(500), nullable=True)
+    success = Column(Boolean, default=True)
+    error_message = Column(Text, nullable=True)
+    timestamp = Column(DateTime, nullable=False, server_default=func.now())
+
+    admin = relationship("User")
+
+class AdminPasswordHistory(Base):
+    """Track password history to prevent reuse"""
+    __tablename__ = "admin_password_history"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admin_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    admin = relationship("User")
+
+# --- EXISTING MODELS (Enhanced) ---
+
 class Car(Base):
     __tablename__ = "cars"
 
@@ -145,7 +220,7 @@ class Car(Base):
     admin_verification_notes = Column(Text, nullable=True)
     is_default = Column(Boolean, nullable=False, default=False)
     
-    # NEW: Enhanced car features
+    # Enhanced car features
     year = Column(Integer, nullable=True)
     car_image_url = Column(String, nullable=True)
     features = Column(JSON, nullable=True)  # ["ac", "wifi", "music", "phone_charger"]
@@ -175,7 +250,7 @@ class Trip(Base):
     status = Column(SQLAlchemyEnum(TripStatus), nullable=False, default=TripStatus.SCHEDULED)
     additional_info = Column(String, nullable=True)
     
-    # NEW: Enhanced trip features
+    # Enhanced trip features
     intermediate_stops = Column(JSON, nullable=True)  # [{"location": "Guliston", "duration_minutes": 15}]
     trip_preferences = Column(JSON, nullable=True)  # {"smoking": false, "music": true, "pets": false}
     is_recurring = Column(Boolean, default=False)
@@ -209,7 +284,7 @@ class Booking(Base):
     status = Column(SQLAlchemyEnum(BookingStatus), nullable=False, default=BookingStatus.CONFIRMED)
     booking_time = Column(DateTime, nullable=False, server_default=func.now())
     
-    # NEW: Enhanced booking features
+    # Enhanced booking features
     pickup_location = Column(String, nullable=True)  # Specific pickup point
     dropoff_location = Column(String, nullable=True)  # Specific dropoff point
     special_requests = Column(Text, nullable=True)
@@ -224,7 +299,7 @@ class Booking(Base):
     def __repr__(self) -> str:
         return f"<Booking {self.id} for Trip {self.trip_id}>"
 
-# --- NEW MODELS FOR ENHANCED FEATURES ---
+# --- ENHANCED FEATURE MODELS ---
 
 class TravelPreference(Base):
     """User travel preferences for better matching"""
@@ -388,7 +463,6 @@ class EmergencyAlert(Base):
     
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
-    # FIXED: Specify foreign_keys explicitly for each relationship
     user = relationship("User", foreign_keys=[user_id], back_populates="emergency_alerts")
     trip = relationship("Trip")
     resolved_by_user = relationship("User", foreign_keys=[resolved_by], back_populates="resolved_emergency_alerts")

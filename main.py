@@ -1,80 +1,290 @@
-# File: main.py
+# File: main.py (Complete updated version with admin auth)
 
 import logging
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
-# Import all your routers
-from routers import admin, auth, bookings, cars, trips, users
-from config import settings # Import settings
-
-# Basic Logging Configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(levelname)s:     %(asctime)s - %(name)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+# Import existing routers
+from routers import (
+    auth, 
+    users, 
+    cars, 
+    trips, 
+    bookings, 
+    admin,
+    preferences,
+    emergency,
+    ratings,
+    notifications,
+    messaging,
+    negotiations
 )
 
+# Import NEW admin auth router
+from routers import admin_auth
+
+from config import settings
+from database import engine, get_db
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan events."""
+    # Startup
+    logger.info("🚀 Starting AutoPort API...")
+    logger.info(f"Environment: {settings.ENVIRONMENT}")
+    logger.info(f"Database URL: {str(settings.DATABASE_URL)[:50]}...")
+    logger.info(f"CORS Origins: {settings.BACKEND_CORS_ORIGINS}")
+    
+    # Test database connection
+    try:
+        async with engine.begin() as conn:
+            await conn.execute("SELECT 1")
+        logger.info("✅ Database connection successful")
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
+        raise
+    
+    yield
+    
+    # Shutdown
+    logger.info("🛑 Shutting down AutoPort API...")
+    await engine.dispose()
+
+# Create FastAPI app
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="API for the AutoPort intercity ride-sharing platform, enabling users to book trips, manage profiles, and for admins to verify drivers and cars.",
-    contact={
-        "name": f"{settings.APP_NAME} Support",
-        "email": getattr(settings, "ADMIN_EMAIL", "support@example.com"), # Use setting if available
-    },
-    license_info={ # Example, can be removed or configured via settings too
-        "name": "MIT License",
-        "url": "https://opensource.org/licenses/MIT",
-    },
-    # You can add root_path from settings if deploying behind a proxy:
-    # root_path=settings.API_ROOT_PATH 
+    description="AutoPort - Modern Ride Sharing Platform for Uzbekistan",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    docs_url=f"{settings.API_V1_STR}/docs",
+    redoc_url=f"{settings.API_V1_STR}/redoc",
+    lifespan=lifespan
 )
 
-# Configure CORS
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For development. In production, restrict to your specific frontend origins.
+    allow_origins=settings.BACKEND_CORS_ORIGINS or ["*"],
     allow_credentials=True,
-    allow_methods=["*"], # Allows all standard methods.
-    allow_headers=["*"], # Allows all headers.
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Include all the routers
-app.include_router(auth.router, prefix="/api/v1") # Example: Adding a global API version prefix
-app.include_router(users.router, prefix="/api/v1")
-app.include_router(admin.router, prefix="/api/v1")
-app.include_router(cars.router, prefix="/api/v1")
-app.include_router(trips.router, prefix="/api/v1")
-app.include_router(bookings.router, prefix="/api/v1")
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests."""
+    start_time = time.time()
+    
+    # Log request
+    logger.info(f"📨 {request.method} {request.url.path} - {request.client.host}")
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Log response
+    process_time = time.time() - start_time
+    logger.info(f"📤 {request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
+    
+    return response
 
-@app.get("/api/v1", tags=["Root"]) # Root for the API v1
-async def read_root():
-    """
-    Root endpoint for the API.
-    Returns a welcome message and API status.
-    """
+# Exception handlers
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler for unhandled errors."""
+    logger.error(f"❌ Unhandled exception: {exc}", exc_info=True)
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An unexpected error occurred. Please try again later.",
+            "error_id": str(id(exc))  # Simple error tracking
+        }
+    )
+
+# Include routers with proper prefixes
+
+# === AUTHENTICATION ROUTERS ===
+app.include_router(
+    auth.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Authentication"]
+)
+
+app.include_router(
+    admin_auth.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Admin Authentication"]
+)
+
+# === USER MANAGEMENT ROUTERS ===
+app.include_router(
+    users.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Users"]
+)
+
+app.include_router(
+    preferences.router, 
+    prefix=settings.API_V1_STR,
+    tags=["User Preferences"]
+)
+
+# === DRIVER & CAR MANAGEMENT ===
+app.include_router(
+    cars.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Cars"]
+)
+
+# === TRIP & BOOKING MANAGEMENT ===
+app.include_router(
+    trips.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Trips"]
+)
+
+app.include_router(
+    bookings.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Bookings"]
+)
+
+app.include_router(
+    negotiations.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Price Negotiations"]
+)
+
+# === COMMUNICATION & SOCIAL ===
+app.include_router(
+    messaging.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Messaging"]
+)
+
+app.include_router(
+    ratings.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Ratings & Reviews"]
+)
+
+app.include_router(
+    notifications.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Notifications"]
+)
+
+# === SAFETY & EMERGENCY ===
+app.include_router(
+    emergency.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Emergency & Safety"]
+)
+
+# === ADMIN MANAGEMENT ===
+app.include_router(
+    admin.router, 
+    prefix=settings.API_V1_STR,
+    tags=["Admin Management"]
+)
+
+# === ROOT ENDPOINTS ===
+
+@app.get("/", tags=["Root"])
+async def root():
+    """API root endpoint with basic information."""
     return {
-        "message": f"Welcome to the {settings.APP_NAME}!",
-        "status": "healthy",
+        "message": f"Welcome to {settings.APP_NAME}",
         "version": settings.APP_VERSION,
-        "docs_url": app.docs_url, # Dynamically get docs URL
-        "redoc_url": app.redoc_url # Dynamically get redoc URL
+        "environment": settings.ENVIRONMENT,
+        "status": "operational",
+        "docs": f"{settings.API_V1_STR}/docs",
+        "admin_docs": f"{settings.API_V1_STR}/docs#tag/Admin-Authentication"
     }
 
-# Health check endpoint (optional, but good practice)
 @app.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "healthy"}
+    """Health check endpoint for monitoring."""
+    try:
+        # Test database connection
+        async with engine.begin() as conn:
+            await conn.execute("SELECT 1")
+        
+        return {
+            "status": "healthy",
+            "version": settings.APP_VERSION,
+            "environment": settings.ENVIRONMENT,
+            "database": "connected",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "version": settings.APP_VERSION,
+                "database": "disconnected",
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
 
+@app.get("/info", tags=["Info"])
+async def api_info():
+    """API information and available endpoints."""
+    return {
+        "api_name": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
+        "features": {
+            "user_authentication": "OTP-based SMS authentication",
+            "admin_authentication": "Email + Password + MFA",
+            "ride_sharing": "Trip creation and booking system",
+            "real_time_messaging": "In-trip communication",
+            "price_negotiation": "Flexible pricing system",
+            "safety_features": "Emergency alerts and contacts",
+            "rating_system": "Driver and passenger reviews",
+            "admin_panel": "Comprehensive admin management"
+        },
+        "authentication": {
+            "users": "SMS OTP",
+            "admins": "Email + Password + MFA"
+        },
+        "endpoints": {
+            "api_docs": f"{settings.API_V1_STR}/docs",
+            "health_check": "/health",
+            "user_auth": f"{settings.API_V1_STR}/auth",
+            "admin_auth": f"{settings.API_V1_STR}/auth/admin",
+            "admin_panel": f"{settings.API_V1_STR}/admin"
+        }
+    }
 
-# Standard Uvicorn run block for easy execution during development
+# Import time for request logging
+import time
+from datetime import datetime
+
 if __name__ == "__main__":
     import uvicorn
+    
+    # Development server configuration
     uvicorn.run(
         "main:app",
-        host="0.0.0.0", 
-        port=8000, 
-        reload=True,
-        log_level="info"
+        host="0.0.0.0",
+        port=8000,
+        reload=True if settings.ENVIRONMENT == "development" else False,
+        log_level="info",
+        access_log=True
     )

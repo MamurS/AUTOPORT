@@ -1,4 +1,4 @@
-# File: schemas.py (Simplified version without external dependencies)
+# File: schemas.py (Complete updated version with admin schemas - FIXED)
 
 import re
 from datetime import datetime
@@ -13,6 +13,12 @@ class UserRole(str, Enum):
     PASSENGER = "passenger"
     DRIVER = "driver"
     ADMIN = "admin"
+    SUPER_ADMIN = "super_admin"  # NEW
+
+class AdminRole(str, Enum):
+    ADMIN = "admin"
+    SUPER_ADMIN = "super_admin"
+    MODERATOR = "moderator"
 
 class UserStatus(str, Enum):
     PENDING_SMS_VERIFICATION = "pending_sms_verification"
@@ -86,7 +92,7 @@ def validate_languages(languages: List[str]) -> List[str]:
             raise ValueError("Invalid language code")
     return languages or ["uz"]
 
-# --- BASE SCHEMAS USING DATACLASSES ---
+# --- BASE USER SCHEMAS ---
 
 @dataclass
 class UserBase:
@@ -152,6 +158,115 @@ class UserProfileUpdate:
     spoken_languages: Optional[List[str]] = None
     preferred_language: Optional[str] = None
     email: Optional[str] = None
+
+# --- ADMIN AUTHENTICATION SCHEMAS ---
+
+@dataclass
+class AdminLoginRequest:
+    email: str
+    password: str
+
+@dataclass  
+class AdminMFAVerificationRequest:
+    session_token: str
+    mfa_code: str
+
+@dataclass
+class AdminResponse:
+    # Required fields first (no defaults)
+    id: UUID
+    email: str
+    full_name: str
+    role: AdminRole
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    # Optional fields with defaults last
+    last_login: Optional[datetime] = None
+
+@dataclass
+class AdminTokenResponse:
+    # Required fields first
+    access_token: str
+    admin: AdminResponse
+    # Optional fields with defaults last
+    token_type: str = "bearer"
+
+@dataclass
+class AdminInviteRequest:
+    email: str
+    role: AdminRole = AdminRole.ADMIN
+    message: Optional[str] = None
+
+@dataclass
+class AcceptInviteRequest:
+    token: str
+    full_name: str
+    password: str
+    confirm_password: str
+
+@dataclass
+class AdminInvitationResponse:
+    # Required fields first
+    id: UUID
+    email: str
+    role: AdminRole
+    expires_at: datetime
+    is_used: bool
+    created_at: datetime
+    # Optional fields with defaults last
+    inviter_name: Optional[str] = None
+
+@dataclass
+class AdminCreateRequest:
+    email: str
+    full_name: str
+    password: str
+    role: AdminRole = AdminRole.ADMIN
+
+@dataclass
+class AdminUpdateRequest:
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[AdminRole] = None
+    is_active: Optional[bool] = None
+
+@dataclass
+class ChangePasswordRequest:
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+@dataclass  
+class BootstrapAdminRequest:
+    email: str
+    full_name: str
+    password: str
+    confirm_password: str
+
+@dataclass
+class AdminAuditLogResponse:
+    # Required fields first
+    id: UUID
+    admin_id: UUID
+    action: str
+    success: bool
+    timestamp: datetime
+    # Optional fields with defaults last
+    resource_type: Optional[str] = None
+    resource_id: Optional[UUID] = None
+    details: Optional[Dict[str, Any]] = None
+    ip_address: Optional[str] = None
+    admin_name: Optional[str] = None
+    error_message: Optional[str] = None
+
+@dataclass
+class AdminStatsResponse:
+    total_admins: int
+    active_admins: int
+    total_actions_today: int
+    failed_logins_today: int
+    pending_invitations: int
 
 # --- TRAVEL PREFERENCES SCHEMAS ---
 
@@ -749,7 +864,7 @@ class TokenResponse:
     user: UserResponse
     token_type: str = "bearer"
 
-# --- ADMIN SCHEMAS ---
+# --- ADMIN MANAGEMENT SCHEMAS ---
 
 @dataclass
 class AdminUpdateStatusRequest:
