@@ -233,15 +233,23 @@ async def create_mfa_token(session, admin_id: UUID) -> str:
     # Generate MFA code
     mfa_code = str(random.randint(100000, 999999))
     
-    # FIX: Use timezone-aware datetime for new columns
+    # FIX: Use timezone-aware datetime for ALL columns
     now_utc = datetime.now(timezone.utc)
     expires_at = now_utc + timedelta(minutes=5)
+    
+    # Convert timezone-aware to naive for old columns (if they still exist)
+    now_naive = now_utc.replace(tzinfo=None)
+    expires_at_naive = expires_at.replace(tzinfo=None)
     
     mfa_token = AdminMFAToken(
         admin_id=admin_id,
         code=mfa_code,
-        expires_at_tz=expires_at,      # Use new timezone-aware column
-        created_at_tz=now_utc,         # Use new timezone-aware column
+        # Old columns (in case they're still required)
+        expires_at=expires_at_naive,       # Set old column too
+        created_at=now_naive,              # Set old column too
+        # New timezone-aware columns
+        expires_at_tz=expires_at,          # Use new timezone-aware column
+        created_at_tz=now_utc,             # Use new timezone-aware column
         is_used=False
     )
     
