@@ -1,4 +1,4 @@
-# File: routers/admin_auth.py (NEW FILE)
+# File: routers/admin_auth.py (COMPLETE FIXED VERSION)
 
 import logging
 import secrets
@@ -130,6 +130,8 @@ async def admin_login(
     Admin login with email and password. Returns temporary session token for MFA.
     """
     try:
+        logger.info(f"🔐 Admin login attempt: {credentials.email}")
+        
         # Check for account lockout
         lockout_info = await check_account_lockout(db, credentials.email)
         if lockout_info["is_locked"]:
@@ -159,12 +161,12 @@ async def admin_login(
                 detail="Invalid credentials"
             )
 
-        # Generate MFA token
-        mfa_token = await create_mfa_token(db, admin.id)
+        # Generate MFA token - FIXED: create_mfa_token returns a string, not an object
+        mfa_code = await create_mfa_token(db, admin.id)
         
         # TODO: Send MFA code via email
-        # await send_mfa_email(admin.email, mfa_token.code)
-        logger.info(f"MFA code for {admin.email}: {mfa_token.code}")  # Remove in production
+        # await send_mfa_email(admin.email, mfa_code)
+        logger.info(f"✅ MFA code generated for {admin.email}: {mfa_code}")  # Remove in production
         
         # Generate temporary session token
         session_token = secrets.token_urlsafe(32)
@@ -175,8 +177,10 @@ async def admin_login(
             ip_address=request.client.host
         )
         
+        logger.info(f"✅ Admin login step 1 successful: {admin.email}")
+        
         return {
-            "message": "MFA code sent to your email",
+            "message": "MFA code sent. Please check your authenticator app.",
             "session_token": session_token,
             "expires_in": 300  # 5 minutes
         }
@@ -184,7 +188,7 @@ async def admin_login(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in admin_login: {e}", exc_info=True)
+        logger.error(f"❌ Error in admin_login: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Login error occurred"
@@ -200,6 +204,8 @@ async def verify_admin_mfa(
     Verify MFA code and return JWT access token.
     """
     try:
+        logger.info(f"🔐 MFA verification attempt for session: {mfa_data.session_token[:10]}...")
+        
         # Verify MFA token
         admin = await verify_mfa_token(db, mfa_data.mfa_code)
         if not admin:
@@ -231,7 +237,7 @@ async def verify_admin_mfa(
             ip_address=request.client.host
         )
         
-        logger.info(f"Admin {admin.email} successfully logged in")
+        logger.info(f"✅ Admin {admin.email} successfully logged in")
         return AdminTokenResponse(
             access_token=access_token,
             admin=admin_response
@@ -240,7 +246,7 @@ async def verify_admin_mfa(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in verify_admin_mfa: {e}", exc_info=True)
+        logger.error(f"❌ Error in verify_admin_mfa: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="MFA verification error"
