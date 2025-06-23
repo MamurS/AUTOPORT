@@ -128,6 +128,9 @@ class User(Base):
     received_ratings = relationship("Rating", foreign_keys="[Rating.rated_user_id]", back_populates="rated_user")
     emergency_alerts = relationship("EmergencyAlert", foreign_keys="[EmergencyAlert.user_id]", back_populates="user")
     resolved_emergency_alerts = relationship("EmergencyAlert", foreign_keys="[EmergencyAlert.resolved_by]", back_populates="resolved_by_user")
+    
+    # NEW: MISSING MFA RELATIONSHIP - This is what was missing!
+    admin_mfa_tokens = relationship("AdminMFAToken", back_populates="admin")
 
     def __repr__(self) -> str:
         return f"<User {self.phone_number}>"
@@ -181,7 +184,7 @@ class AdminMFAToken(Base):
     
     is_used = Column(Boolean, default=False, nullable=False)
     
-    # ADD THIS RELATIONSHIP - This is what's missing!
+    # RELATIONSHIP - This connects to User model
     admin = relationship("User", back_populates="admin_mfa_tokens")
 
 class AdminAuditLog(Base):
