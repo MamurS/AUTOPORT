@@ -9,7 +9,6 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, declarative_base
 
 from uuid import uuid4
-from sqlalchemy.ext.declarative import declarative_base
 
 # Create Base here to avoid circular imports
 Base = declarative_base()

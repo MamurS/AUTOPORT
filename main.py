@@ -1,4 +1,4 @@
-# File: main.py (Complete updated version with admin auth)
+# File: main.py (Complete updated version with admin auth and fixed CORS)
 
 import logging
 import time
@@ -47,7 +47,6 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting AutoPort API...")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"Database URL: {str(settings.DATABASE_URL)[:50]}...")
-    logger.info(f"CORS Origins: {settings.BACKEND_CORS_ORIGINS}")
     
     # Test database connection
     try:
@@ -75,14 +74,51 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# CORS middleware - UPDATED FOR ADMIN CONSOLE AND DEPLOYMENT
+cors_origins = getattr(settings, 'BACKEND_CORS_ORIGINS', None) or []
+
+# Add specific origins for admin console and development
+additional_origins = [
+    "http://localhost:3000",           # React dev server
+    "http://localhost:8080",           # Vue/other dev server
+    "http://127.0.0.1:3000",          # Alternative localhost
+    "http://127.0.0.1:8080",          # Alternative localhost
+    "http://localhost:5173",           # Vite dev server
+    "null"                             # For file:// protocol (local HTML files)
+]
+
+# If we have configured origins, combine them with additional ones
+if cors_origins and cors_origins != []:
+    if isinstance(cors_origins, str):
+        cors_origins = [cors_origins]
+    all_origins = list(set(cors_origins + additional_origins))
+else:
+    # No configured origins - allow all for development
+    all_origins = ["*"]
+
+# Remove 'null' if we're allowing all origins (they conflict)
+if "*" in all_origins and "null" in all_origins:
+    all_origins.remove("null")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS or ["*"],
+    allow_origins=all_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=[
+        "Accept",
+        "Accept-Language", 
+        "Content-Language",
+        "Content-Type",
+        "Authorization",
+        "Access-Control-Request-Method",
+        "Access-Control-Request-Headers",
+        "X-Requested-With",
+    ],
 )
+
+# Log CORS configuration
+logger.info(f"🌐 CORS Origins configured: {all_origins}")
 
 # Request logging middleware
 @app.middleware("http")
@@ -214,7 +250,8 @@ async def root():
         "environment": settings.ENVIRONMENT,
         "status": "operational",
         "docs": f"{settings.API_V1_STR}/docs",
-        "admin_docs": f"{settings.API_V1_STR}/docs#tag/Admin-Authentication"
+        "admin_docs": f"{settings.API_V1_STR}/docs#tag/Admin-Authentication",
+        "cors_origins": len(all_origins)
     }
 
 @app.get("/health", tags=["Health"])
@@ -230,6 +267,7 @@ async def health_check():
             "version": settings.APP_VERSION,
             "environment": settings.ENVIRONMENT,
             "database": "connected",
+            "cors_configured": True,
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
@@ -272,6 +310,11 @@ async def api_info():
             "user_auth": f"{settings.API_V1_STR}/auth",
             "admin_auth": f"{settings.API_V1_STR}/auth/admin",
             "admin_panel": f"{settings.API_V1_STR}/admin"
+        },
+        "cors": {
+            "configured_origins": len(all_origins),
+            "allows_credentials": True,
+            "admin_console_supported": True
         }
     }
 
