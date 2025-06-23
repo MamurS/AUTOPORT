@@ -221,7 +221,17 @@ async def verify_admin_mfa(
             )
 
         # Record successful login
-        await record_successful_login(db, admin)
+        async def record_successful_login(session: AsyncSession, admin: User) -> None:
+            """Record successful login and reset failed attempts."""
+            admin.failed_login_attempts = 0
+            admin.locked_until = None
+            
+            # FIX: Convert timezone-aware datetime to naive for database storage
+            now_utc = datetime.now(timezone.utc)
+            admin.last_admin_login = now_utc.replace(tzinfo=None)  # Remove timezone info
+            
+            session.add(admin)
+            await session.flush()
         
         # Generate JWT access token
         access_token = create_access_token(
