@@ -222,35 +222,33 @@ async def record_successful_login(session: AsyncSession, admin: User) -> None:
 
 # --- MFA FUNCTIONS ---
 
-async def create_mfa_token(session: AsyncSession, admin_id: UUID) -> AdminMFAToken:
-    """Create MFA token for admin."""
-    # Invalidate existing tokens
+async def create_mfa_token(session, admin_id: UUID) -> str:
+    # Invalidate any existing unused tokens
     await session.execute(
         update(AdminMFAToken)
-        .where(
-            and_(
-                AdminMFAToken.admin_id == admin_id,
-                AdminMFAToken.is_used == False
-            )
-        )
+        .where(AdminMFAToken.admin_id == admin_id, AdminMFAToken.is_used == False)
         .values(is_used=True)
     )
     
-    # Generate 6-digit code
-    code = str(random.randint(100000, 999999))
+    # Generate MFA code
+    mfa_code = str(random.randint(100000, 999999))
     
-    # Create new token
+    # FIX: Use timezone-aware datetime for new columns
+    now_utc = datetime.now(timezone.utc)
+    expires_at = now_utc + timedelta(minutes=5)
+    
     mfa_token = AdminMFAToken(
         admin_id=admin_id,
-        code=code,
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5)
+        code=mfa_code,
+        expires_at_tz=expires_at,      # Use new timezone-aware column
+        created_at_tz=now_utc,         # Use new timezone-aware column
+        is_used=False
     )
     
     session.add(mfa_token)
     await session.flush()
-    await session.refresh(mfa_token)
     
-    return mfa_token
+    return mfa_code
 
 async def verify_mfa_token(session: AsyncSession, code: str) -> Optional[User]:
     """Verify MFA token and return admin user."""
@@ -261,7 +259,7 @@ async def verify_mfa_token(session: AsyncSession, code: str) -> Optional[User]:
             and_(
                 AdminMFAToken.code == code,
                 AdminMFAToken.is_used == False,
-                AdminMFAToken.expires_at > datetime.now(timezone.utc)
+                AdminMFAToken.expires_at_tz > datetime.now(timezone.utc)
             )
         )
     )

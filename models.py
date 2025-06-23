@@ -2,11 +2,14 @@
 
 import uuid
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, DateTime, Enum as SQLAlchemyEnum, func, Boolean, Integer, ForeignKey, Numeric, Text, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, declarative_base
+
+from uuid import uuid4
+from sqlalchemy.ext.declarative import declarative_base
 
 # Create Base here to avoid circular imports
 Base = declarative_base()
@@ -163,17 +166,21 @@ class AdminInvitation(Base):
     inviter = relationship("User", backref="sent_admin_invitations")
 
 class AdminMFAToken(Base):
-    """Multi-factor authentication tokens for admin login"""
     __tablename__ = "admin_mfa_tokens"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     admin_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     code = Column(String(6), nullable=False)
-    expires_at = Column(DateTime, nullable=False)
-    is_used = Column(Boolean, default=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-
-    admin = relationship("User")
+    
+    # Old columns (keep for now)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    
+    # New timezone-aware columns
+    expires_at_tz = Column(DateTime(timezone=True), nullable=True)
+    created_at_tz = Column(DateTime(timezone=True), nullable=True)
+    
+    is_used = Column(Boolean, default=False, nullable=False)
 
 class AdminAuditLog(Base):
     """Comprehensive audit logging for admin actions"""
