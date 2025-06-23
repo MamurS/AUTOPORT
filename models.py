@@ -133,7 +133,11 @@ class User(Base):
     admin_mfa_tokens = relationship("AdminMFAToken", back_populates="admin")
 
     def __repr__(self) -> str:
-        return f"<User {self.phone_number}>"
+        try:
+            return f"<User {self.phone_number}>"
+        except:
+            return f"<User {getattr(self, 'id', 'unknown')}>"
+
 
 class SMSVerification(Base):
     __tablename__ = "sms_verifications"
