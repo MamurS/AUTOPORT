@@ -180,6 +180,9 @@ class AdminMFAToken(Base):
     created_at_tz = Column(DateTime(timezone=True), nullable=True)
     
     is_used = Column(Boolean, default=False, nullable=False)
+    
+    # ADD THIS RELATIONSHIP - This is what's missing!
+    admin = relationship("User", back_populates="admin_mfa_tokens")
 
 class AdminAuditLog(Base):
     """Comprehensive audit logging for admin actions"""
