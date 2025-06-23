@@ -1,4 +1,4 @@
-# File: models.py (Complete updated version with admin security)
+# File: models.py (Complete updated version with admin security and safe __repr__)
 
 import uuid
 from enum import Enum
@@ -129,15 +129,15 @@ class User(Base):
     emergency_alerts = relationship("EmergencyAlert", foreign_keys="[EmergencyAlert.user_id]", back_populates="user")
     resolved_emergency_alerts = relationship("EmergencyAlert", foreign_keys="[EmergencyAlert.resolved_by]", back_populates="resolved_by_user")
     
-    # NEW: MISSING MFA RELATIONSHIP - This is what was missing!
+    # NEW: MISSING MFA RELATIONSHIP - This was missing!
     admin_mfa_tokens = relationship("AdminMFAToken", back_populates="admin")
 
     def __repr__(self) -> str:
         try:
             return f"<User {self.phone_number}>"
         except:
-            return f"<User {getattr(self, 'id', 'unknown')}>"
-
+            # Use object ID instead of SQLAlchemy attributes to avoid DetachedInstanceError
+            return f"<User object at {hex(id(self))}>"
 
 class SMSVerification(Base):
     __tablename__ = "sms_verifications"
@@ -150,7 +150,10 @@ class SMSVerification(Base):
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
     def __repr__(self) -> str:
-        return f"<SMSVerification {self.phone_number}>"
+        try:
+            return f"<SMSVerification {self.phone_number}>"
+        except:
+            return f"<SMSVerification object at {hex(id(self))}>"
 
 # --- NEW: ADMIN SECURITY TABLES ---
 
@@ -248,7 +251,10 @@ class Car(Base):
     driver = relationship("User", back_populates="cars")
 
     def __repr__(self) -> str:
-        return f"<Car {self.license_plate}>"
+        try:
+            return f"<Car {self.license_plate}>"
+        except:
+            return f"<Car object at {hex(id(self))}>"
 
 class Trip(Base):
     __tablename__ = "trips"
@@ -287,7 +293,10 @@ class Trip(Base):
     price_negotiations = relationship("PriceNegotiation", back_populates="trip", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
-        return f"<Trip {self.id} from {self.from_location_text} to {self.to_location_text}>"
+        try:
+            return f"<Trip {self.id} from {self.from_location_text} to {self.to_location_text}>"
+        except:
+            return f"<Trip object at {hex(id(self))}>"
 
 class Booking(Base):
     __tablename__ = "bookings"
@@ -313,7 +322,10 @@ class Booking(Base):
     passenger = relationship("User", backref="trip_bookings")
 
     def __repr__(self) -> str:
-        return f"<Booking {self.id} for Trip {self.trip_id}>"
+        try:
+            return f"<Booking {self.id} for Trip {self.trip_id}>"
+        except:
+            return f"<Booking object at {hex(id(self))}>"
 
 # --- ENHANCED FEATURE MODELS ---
 
