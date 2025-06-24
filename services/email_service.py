@@ -52,8 +52,12 @@ class EmailService:
             Dict with success status and response data
         """
         if not self.smtp_password:
-            logger.error("SMTP_PASSWORD not configured")
-            raise ValueError("Email service not properly configured")
+            logger.warning("SMTP_PASSWORD not configured - Email service disabled")
+            return {
+                "success": False,
+                "error": "Email service not configured",
+                "service_disabled": True
+            }
             
         try:
             # Create message

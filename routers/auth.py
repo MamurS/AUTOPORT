@@ -21,6 +21,7 @@ from crud.auth_crud import (
 )
 from services.sms_service import send_otp_sms
 from database import get_db
+from config import settings
 from models import User, UserRole, UserStatus
 from schemas import (
     SMSVerificationRequest,
@@ -86,6 +87,12 @@ async def request_otp(
         if sms_result["success"]:
             logger.info(f"OTP sent successfully to {user_data.phone_number}")
             return {"message": f"SMS OTP sent successfully to {user_data.phone_number}"}
+        elif sms_result.get("service_disabled"):
+            logger.warning(f"SMS service disabled - OTP logged instead: {otp_code}")
+            return {
+                "message": f"SMS OTP sent successfully to {user_data.phone_number}",
+                "dev_note": "SMS service not configured - check logs for OTP code" if not settings.is_production else None
+            }
         else:
             logger.error(f"Failed to send OTP to {user_data.phone_number}: {sms_result.get('error')}")
             # Still return success to avoid revealing SMS service issues

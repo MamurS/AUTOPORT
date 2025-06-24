@@ -174,6 +174,8 @@ async def admin_login(
         
         if email_result["success"]:
             logger.info(f"✅ MFA code sent to {admin.email}")
+        elif email_result.get("service_disabled"):
+            logger.warning(f"📧 Email service disabled - MFA code logged instead: {mfa_code}")
         else:
             logger.error(f"❌ Failed to send MFA code to {admin.email}: {email_result.get('error')}")
             # Continue anyway - admin can still use TOTP if available

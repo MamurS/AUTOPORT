@@ -37,8 +37,12 @@ class SMSService:
             Dict with success status and response data
         """
         if not self.api_token:
-            logger.error("SMS_API_TOKEN not configured")
-            raise ValueError("SMS service not properly configured")
+            logger.warning("SMS_API_TOKEN not configured - SMS service disabled")
+            return {
+                "success": False,
+                "error": "SMS service not configured",
+                "service_disabled": True
+            }
             
         # Ensure phone number is in correct format
         phone_number = self._format_phone_number(phone_number)
@@ -133,7 +137,10 @@ class SMSService:
     async def get_message_status(self, message_id: str) -> Dict[str, Any]:
         """Get SMS delivery status"""
         if not self.api_token:
-            raise ValueError("SMS service not properly configured")
+            return {
+                "success": False,
+                "error": "SMS service not configured"
+            }
             
         headers = {
             "Authorization": f"Bearer {self.api_token}",
