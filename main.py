@@ -84,6 +84,7 @@ additional_origins = [
     "http://127.0.0.1:3000",          # Alternative localhost
     "http://127.0.0.1:8080",          # Alternative localhost
     "http://localhost:5173",           # Vite dev server
+    "http://localhost:19006",          # Admin console
     "null"                             # For file:// protocol (local HTML files)
 ]
 
