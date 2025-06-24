@@ -24,11 +24,14 @@ DEBUG=false
 DATABASE_URL=postgresql+asyncpg://username:password@hostname:port/database_name
 ```
 
-### Security Keys (REQUIRED - Generate Strong Keys)
+### Security Keys (OPTIONAL - Auto-Generated if Not Set)
 ```bash
+# For persistent sessions across deployments, set these:
 # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
 JWT_SECRET_KEY=your-production-jwt-secret-key-256-bits-long
 SECRET_KEY=your-production-secret-key-256-bits-long
+
+# If not set, keys are auto-generated on startup (sessions won't persist across restarts)
 ```
 
 ### SMS Service (ESKIZ SMS - REQUIRED)
@@ -64,12 +67,12 @@ BACKEND_CORS_ORIGINS_STR=https://autoport.uz,https://admin.autoport.uz
 
 ## Production Validation
 
-The application will validate that all required services are properly configured when running in production mode:
+The application will gracefully handle missing configurations in production mode:
 
-1. **SMS Service**: Validates `SMS_API_TOKEN` is set
-2. **Email Service**: Validates `SMTP_PASSWORD` is set  
-3. **Security Keys**: Ensures default keys are changed
-4. **Environment**: Confirms production environment settings
+1. **SMS Service**: Warns if `SMS_API_TOKEN` not set, disables SMS features
+2. **Email Service**: Warns if `SMTP_PASSWORD` not set, disables email features  
+3. **Security Keys**: Auto-generates secure keys if not provided (warns about session persistence)
+4. **Environment**: Optimizes settings for production environment
 
 ## Setting Up SMS Service (Eskiz)
 

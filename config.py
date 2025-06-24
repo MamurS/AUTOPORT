@@ -1,6 +1,7 @@
 # File: config.py (Complete updated version with admin security settings)
 
 import os
+import secrets
 from typing import List, Optional, Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -52,7 +53,7 @@ class Settings(BaseSettings):
         raise ValueError(f"Invalid PostgreSQL DATABASE_URL format: {db_url_to_check}")
 
     # ===== JWT CONFIGURATION =====
-    JWT_SECRET_KEY: str = "your-super-secret-jwt-key-change-in-production"
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(32))
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -114,7 +115,7 @@ class Settings(BaseSettings):
 
     # ===== SECURITY SETTINGS =====
     # General security
-    SECRET_KEY: str = "your-super-secret-key-change-in-production"
+    SECRET_KEY: str = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
     BCRYPT_ROUNDS: int = 12
     
     # Rate limiting
@@ -280,11 +281,14 @@ if settings.is_production:
     settings.FAKE_PAYMENTS = False
     settings.ENABLE_ADMIN_API_DOCS = False
     
-    # Validate critical security credentials (these are absolutely required)
-    if settings.JWT_SECRET_KEY == "your-super-secret-jwt-key-change-in-production":
-        raise ValueError("JWT_SECRET_KEY must be changed from default in production")
-    if settings.SECRET_KEY == "your-super-secret-key-change-in-production":
-        raise ValueError("SECRET_KEY must be changed from default in production")
+    # Log security key status for production
+    jwt_is_custom = "JWT_SECRET_KEY" in os.environ
+    secret_is_custom = "SECRET_KEY" in os.environ
+    
+    if not jwt_is_custom:
+        logger.warning("🔑 JWT_SECRET_KEY auto-generated - set JWT_SECRET_KEY env var for persistent sessions")
+    if not secret_is_custom:
+        logger.warning("🔑 SECRET_KEY auto-generated - set SECRET_KEY env var for persistent encryption")
     
     # Log warnings for missing service credentials (but don't fail startup)
     if not settings.SMS_API_TOKEN:
@@ -334,6 +338,7 @@ logger.info(f"🔧 AutoPort API Configuration Loaded")
 logger.info(f"📍 Environment: {settings.ENVIRONMENT}")
 logger.info(f"🗄️  Database: {settings.database_url_str[:50]}...")
 logger.info(f"🔐 Admin MFA: {'Enabled' if settings.ADMIN_REQUIRE_MFA else 'Disabled'}")
+logger.info(f"🔑 Security Keys: {'Custom' if 'JWT_SECRET_KEY' in os.environ and 'SECRET_KEY' in os.environ else 'Auto-Generated'}")
 if settings.is_production:
     logger.info(f"📧 Email: {'Production Ready' if settings.SMTP_PASSWORD else 'Disabled - Configure SMTP_PASSWORD'}")
     logger.info(f"📱 SMS: {'Production Ready' if settings.SMS_API_TOKEN else 'Disabled - Configure SMS_API_TOKEN'}")
