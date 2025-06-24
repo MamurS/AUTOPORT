@@ -2,10 +2,22 @@
 
 import os
 import secrets
+import logging
+import sys
 from typing import List, Optional, Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyHttpUrl, field_validator, PostgresDsn, ValidationInfo, EmailStr
+
+# Set up basic logging early so it can be used during config validation
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
+# Get logger for config module
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     # ===== APPLICATION METADATA =====
@@ -309,18 +321,15 @@ elif settings.is_development:
 
 # ===== LOGGING CONFIGURATION =====
 
-import logging
-import sys
+# Update logging configuration based on settings (after basic setup)
+root_logger = logging.getLogger()
+root_logger.setLevel(getattr(logging, settings.LOG_LEVEL))
 
-# Configure logging based on settings
-logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL),
-    format=settings.LOG_FORMAT,
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        *([logging.FileHandler(settings.LOG_FILE)] if settings.LOG_FILE else [])
-    ]
-)
+# Add file handler if specified
+if settings.LOG_FILE:
+    file_handler = logging.FileHandler(settings.LOG_FILE)
+    file_handler.setFormatter(logging.Formatter(settings.LOG_FORMAT))
+    root_logger.addHandler(file_handler)
 
 # Configure specific loggers
 if settings.is_development:
@@ -331,9 +340,6 @@ else:
     # Less verbose in production
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-
-# Startup logging
-logger = logging.getLogger(__name__)
 logger.info(f"🔧 AutoPort API Configuration Loaded")
 logger.info(f"📍 Environment: {settings.ENVIRONMENT}")
 logger.info(f"🗄️  Database: {settings.database_url_str[:50]}...")
