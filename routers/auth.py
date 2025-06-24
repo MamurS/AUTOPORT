@@ -19,6 +19,7 @@ from crud.auth_crud import (
     verify_otp,
     complete_driver_registration,
 )
+from services.sms_service import send_otp_sms
 from database import get_db
 from models import User, UserRole, UserStatus
 from schemas import (
@@ -79,8 +80,16 @@ async def request_otp(
             code=otp_code,
             expires_at=expires_at
         )
-        logger.info(f"OTP for {user_data.phone_number}: {otp_code}")
-        return {"message": f"SMS OTP sent successfully to {user_data.phone_number}"}
+        
+        # Send OTP via SMS service
+        sms_result = await send_otp_sms(user_data.phone_number, otp_code)
+        if sms_result["success"]:
+            logger.info(f"OTP sent successfully to {user_data.phone_number}")
+            return {"message": f"SMS OTP sent successfully to {user_data.phone_number}"}
+        else:
+            logger.error(f"Failed to send OTP to {user_data.phone_number}: {sms_result.get('error')}")
+            # Still return success to avoid revealing SMS service issues
+            return {"message": f"SMS OTP sent successfully to {user_data.phone_number}"}
 
     except HTTPException:
         raise

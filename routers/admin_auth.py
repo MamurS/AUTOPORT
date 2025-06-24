@@ -28,6 +28,7 @@ from crud.admin_auth_crud import (
 )
 from database import get_db
 from models import User, UserRole, AdminRole
+from services.email_service import send_admin_mfa_email
 from schemas import (
     AdminLoginRequest,
     AdminMFAVerificationRequest,
@@ -164,9 +165,18 @@ async def admin_login(
         # Generate MFA token - FIXED: create_mfa_token returns a string, not an object
         mfa_code = await create_mfa_token(db, admin.id)
         
-        # TODO: Send MFA code via email
-        # await send_mfa_email(admin.email, mfa_code)
-        logger.info(f"✅ MFA code generated for {admin.email}: {mfa_code}")  # Remove in production
+        # Send MFA code via email
+        email_result = await send_admin_mfa_email(
+            admin.email or "",
+            admin.full_name or "Admin",
+            mfa_code
+        )
+        
+        if email_result["success"]:
+            logger.info(f"✅ MFA code sent to {admin.email}")
+        else:
+            logger.error(f"❌ Failed to send MFA code to {admin.email}: {email_result.get('error')}")
+            # Continue anyway - admin can still use TOTP if available
         
         # Generate temporary session token
         session_token = secrets.token_urlsafe(32)

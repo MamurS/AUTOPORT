@@ -273,23 +273,31 @@ settings = Settings()
 # ===== ENVIRONMENT-SPECIFIC OVERRIDES =====
 
 if settings.is_production:
-    # Production overrides
+    # Production overrides - REQUIRE real credentials
     settings.DEBUG = False
     settings.MOCK_SMS = False
     settings.MOCK_EMAIL = False
     settings.FAKE_PAYMENTS = False
     settings.ENABLE_ADMIN_API_DOCS = False
     
+    # Validate required production credentials
+    if not settings.SMS_API_TOKEN:
+        raise ValueError("SMS_API_TOKEN is required in production environment")
+    if not settings.SMTP_PASSWORD:
+        raise ValueError("SMTP_PASSWORD is required in production environment")
+    if settings.JWT_SECRET_KEY == "your-super-secret-jwt-key-change-in-production":
+        raise ValueError("JWT_SECRET_KEY must be changed from default in production")
+    if settings.SECRET_KEY == "your-super-secret-key-change-in-production":
+        raise ValueError("SECRET_KEY must be changed from default in production")
+    
 elif settings.is_development:
     # Development overrides
     settings.DEBUG = True
     settings.LOG_LEVEL = "DEBUG"
     
-    # Optional: Enable mocking for development
-    if not settings.SMS_API_TOKEN:
-        settings.MOCK_SMS = True
-    if not settings.SMTP_PASSWORD:
-        settings.MOCK_EMAIL = True
+    # For development, still require real credentials but don't fail if missing
+    settings.MOCK_SMS = not bool(settings.SMS_API_TOKEN)
+    settings.MOCK_EMAIL = not bool(settings.SMTP_PASSWORD)
 
 # ===== LOGGING CONFIGURATION =====
 
@@ -322,8 +330,8 @@ logger.info(f"🔧 AutoPort API Configuration Loaded")
 logger.info(f"📍 Environment: {settings.ENVIRONMENT}")
 logger.info(f"🗄️  Database: {settings.database_url_str[:50]}...")
 logger.info(f"🔐 Admin MFA: {'Enabled' if settings.ADMIN_REQUIRE_MFA else 'Disabled'}")
-logger.info(f"📧 Email: {'Configured' if settings.SMTP_PASSWORD else 'Mock Mode'}")
-logger.info(f"📱 SMS: {'Configured' if settings.SMS_API_TOKEN else 'Mock Mode'}")
+logger.info(f"📧 Email: {'Production Ready' if settings.SMTP_PASSWORD else 'Not Configured'}")
+logger.info(f"📱 SMS: {'Production Ready' if settings.SMS_API_TOKEN else 'Not Configured'}")
 
 # ===== EXPORT COMMONLY USED VALUES =====
 
